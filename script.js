@@ -1869,9 +1869,12 @@ class EnemyProjectile extends Entity {
   constructor(x, y, dirX, dirY, speed = 310, damage = 14, radius = 6) {
     super(x, y, radius, '#fb923c');
     const ngMult = isMortalMode ? (4 * ngPlusLevel) : (1 + ngPlusLevel);
+    const eyeDmgMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
+      ? BrotherEye.getEnemyDamageMultiplier()
+      : 1.0;
     this.vx = dirX * speed;
     this.vy = dirY * speed;
-    this.damage = Math.round(damage * ngMult);
+    this.damage = Math.max(1, Math.round(damage * ngMult * eyeDmgMult));
     this.lifeTime = 2.6;
   }
 
@@ -8567,6 +8570,10 @@ class Room {
   update(dt, player, floor) {
     this.portalPulse += dt * 4;
 
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.onRoomTick(dt, this, player);
+    }
+
     if (this.chest) {
       this.chest.update(dt, player, this);
     }
@@ -11023,6 +11030,9 @@ class Game {
     const eyeSpawnMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
       ? BrotherEye.getAdaptiveSpawnMultiplier()
       : 1.0;
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.initialize(this.player, 'NEW_RUN_OR_R');
+    }
     this.currentFloor = new DungeonFloor(
       this.currentSection,
       this.currentLevel,
@@ -11134,15 +11144,24 @@ class Game {
     this.currentSection = 1;
     this.currentLevel = 1;
     this.player.itemManager.onLevelStart();
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.initialize(this.player, 'NG_PLUS');
+    }
+    const eyeSpawnMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
+      ? BrotherEye.getAdaptiveSpawnMultiplier()
+      : 1.0;
     this.currentFloor = new DungeonFloor(
       this.currentSection,
       this.currentLevel,
       CONFIG.ROOMS_PER_FLOOR,
-      this.player.enemySpawnMultiplier,
+      this.player.enemySpawnMultiplier * eyeSpawnMult,
       this.ui,
       this.player.relicChanceMultiplier
     );
     this.currentRoom = this.currentFloor.getRoom(0, 0);
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.onRoomEntered(this.currentRoom, this.player);
+    }
     this.player.x = ROOM_BOUNDS.centerX;
     this.player.y = ROOM_BOUNDS.centerY + 75;
     this.player.roomTransitionGrace = 0.6;
@@ -11341,6 +11360,9 @@ class Game {
       this.player.y = ROOM_BOUNDS.bottom - 55;
       this.player.roomTransitionGrace = 0.45;
       this.player.itemManager.onRoomStart(this.currentRoom);
+      if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+        BrotherEye.onRoomEntered(this.currentRoom, this.player);
+      }
 
       const activeBoss = this.currentRoom.enemies.find(
         (e) => e instanceof Boss && !e.markedForDeletion
@@ -11368,11 +11390,14 @@ class Game {
       }
 
       this.player.itemManager.onLevelStart();
+      const eyeSpawnMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
+        ? BrotherEye.getAdaptiveSpawnMultiplier()
+        : 1.0;
       this.currentFloor = new DungeonFloor(
         this.currentSection,
         this.currentLevel,
         CONFIG.ROOMS_PER_FLOOR,
-        this.player.enemySpawnMultiplier,
+        this.player.enemySpawnMultiplier * eyeSpawnMult,
         this.ui,
         this.player.relicChanceMultiplier
       );
@@ -11382,6 +11407,9 @@ class Game {
       this.player.heal(25);
       this.player.roomTransitionGrace = 0.5;
       this.player.itemManager.onRoomStart(this.currentRoom);
+      if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+        BrotherEye.onRoomEntered(this.currentRoom, this.player);
+      }
 
       this.ui.updateProgression(this.currentSection, this.currentLevel);
       this.ui.updateRoomInfo(this.currentRoom, this.currentFloor);
@@ -11413,6 +11441,9 @@ class Game {
       const revived = this.player.itemManager.onDeath(this.currentRoom);
       if (!revived && this.player.hp <= 0) {
         this.state = 'GAME_OVER';
+        if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+          BrotherEye.onPlayerDeath();
+        }
         this.ui.setOverlayState('GAME_OVER', this);
       } else {
         this.ui.updateHealth(this.player);

@@ -368,14 +368,14 @@ En la carpeta `<appDataDir>\brain\<conversation-id>\scratch\` se encuentran los 
 * `ChallengeMonolith`: Monolito de hordas en salas de combate de élite (`HardRoom`). Al activarse con `[E]`, bloquea las puertas y genera 2 oleadas de enemigos élites y colosos. Al vencerlos, desbloquea las puertas y otorga el **Cofre del Gran Campeón** (`ChampionChest`) con +45 Oro, +20 Gemas y Reliquia de alto nivel.
 * `BloodPactAltar`: Altar de sangre en `SanctuaryRoom`. Permite sacrificar 25 HP a cambio de un +35% de Daño de Ataque permanente para toda la partida.
 
-### 14.4 Motor de Dificultad Adaptativa (`BrotherEye.js`)
-* **Propósito y Aislamiento:** Diseñado para evitar que las curvas de dificultad dependan de fórmulas rígidas e infinitas por piso o NG+. Analiza el rendimiento orgánico del jugador entre la **entrada y salida** de cada habitación. Si se desea desactivar o trasladar a un modo de juego separado, basta con establecer `BrotherEye.enabled = false` o desacoplar el archivo sin romper nada del core.
-* **Métricas Analizadas por Sala:**
-  * **Tiempo de despeje (Clear Time):** Comparado contra un *benchmark* dinámico (14s base, x1.45 en salas difíciles, x2.5 en bosses).
-  * **Preservación de HP:** Bonificación por limpiezas impecables (0 daño recibido) vs. alivio por castigo crítico (>35% de vida perdida en la sala).
-  * **Estado agonizante:** Si el jugador entra en zona crítica (<25% HP), Brother Eye amortigua la hostilidad y aumenta el drop de corazones.
-* **Moduladores Emitidos:**
-  * `spawnMultiplier` (0.75x a 1.35x).
-  * `enemyHpMultiplier` (0.85x a 1.25x).
-  * `enemySpeedMultiplier` (0.90x a 1.15x).
-  * `heartDropBonus` (+0% a +20%).
+### 14.4 Algoritmo de Dificultad Adaptativa por Estados (`BrotherEye.js` v2.0)
+* **Arquitectura de Estados del Autor (`ESTADO -1` a `ESTADO 4`):**
+  * **ESTADO -1 (`globalClock`):** Reloj interno continuo desde que el jugador entra por primera vez hasta que muere (`onPlayerDeath`). **Solo** se reinicia al empezar un `NG+` nuevo o al reiniciar la partida con `R` (`BrotherEye.initialize(player, reason)`).
+  * **ESTADO 0 (`INITIALIZE`):** Registra Vida total (`maxHp`), Escudo (`shield`), Velocidad (`speed`), Proyectiles, Multiplicador de Daño y Cantidad total de reliquias (`ownedRelics.length`, solo cantidad).
+  * **ESTADO 1 (`ROOM_ENTER`):** Aplica dinámicamente la adaptación calculada a la habitación entrante (`applyAdaptationToRoom`: modifica **cantidad de enemigos**, **daño enemigo** de contacto/proyectiles y un poco su **velocidad**), registra vida/escudo de entrada, enemigos iniciales y arranca el **segundo reloj** (`roomClockSeconds`).
+  * **ESTADO 2 (`MIDPOINT` al 50% de enemigos):** Al caer el 50% de los enemigos en tiempo real (`onRoomTick`), registra vida actual, tiempo del segundo reloj en la primera mitad, vida perdida (`Vida_i - Vida_actual`), nuevas reliquias, enemigos abatidos por segundo (`kpsFirstHalf`) y daño recibido por segundo (`dtpsFirstHalf`).
+  * **ESTADO 3 (`ROOM_COMPLETE`):** Al abatir el 100% de los enemigos, registra vida final, reliquias totales, tiempo total empleado, velocidad por intervalos (`combatSlowdownRatio`) y la métrica clave: **Daño Recibido por Segundo de Combate (`dtpsTotal`)**.
+  * **ESTADO 4 (`DIFFICULTY_UPDATE`):**
+    * Calcula 5 indicadores (0 a 100): Supervivencia ($S$, 30%), Potencia ($P$, 20%), Velocidad ($V$, 20%), Eficiencia/DTPS ($E$, 20%) y Progresión ($G$, 10%).
+    * Ecuación maestra: $R = 0.30S + 0.20P + 0.20V + 0.20E + 0.10G$, comparada con $R_{\text{esperado}} = 65$ ($\Delta = R - 65$).
+    * **Dados de Ruido y "Pies en la Tierra":** Tira dados en cada indicador para hallar `maxPoint` y `minPoint`, y un segundo dado de ruido (`noiseRoll`). Si el jugador lleva una build rota dominando varias salas (`godStreak >= 2`, modo `ACOMPAÑAR_BUILD` que suma horda sin inflar vida esponja) y sale el ruido más bajo, activa **`PIES_EN_LA_TIERRA`**, inyectando en la próxima sala un pico de cantidad (+45% a +65%), daño (+30% a +48%) y velocidad (+12% a +18%) para que no se confíe.
