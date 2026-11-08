@@ -34,14 +34,22 @@ class VolcanicMeteorProjectile extends BaseEntity {
     this.lifeTime = 1.3;
   }
 
-  update(dt, player, room) {
+  update(dt, arg1, arg2) {
+    const room = (arg1 && Array.isArray(arg1.enemies)) ? arg1 : ((arg2 && Array.isArray(arg2.enemies)) ? arg2 : null);
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.lifeTime -= dt;
 
     if (this.lifeTime <= 0) {
-      this.detonate(room);
       this.markedForDeletion = true;
+      this.detonate(room);
+      return;
+    }
+
+    const rb = (room && room.bounds) ? room.bounds : (typeof ROOM_BOUNDS !== 'undefined' ? ROOM_BOUNDS : null);
+    if (rb && (this.x <= rb.left || this.x >= rb.right || this.y <= rb.top || this.y >= rb.bottom)) {
+      this.markedForDeletion = true;
+      this.detonate(room);
       return;
     }
 
@@ -50,9 +58,9 @@ class VolcanicMeteorProjectile extends BaseEntity {
         if (enemy.markedForDeletion || (enemy.isBurrowed && enemy.isBurrowed === true)) continue;
         const d = Math.hypot(enemy.x - this.x, enemy.y - this.y);
         if (d <= enemy.radius + this.radius) {
+          this.markedForDeletion = true;
           enemy.takeDamage(this.damage, this.vx * 0.2, this.vy * 0.2, 'FIRE');
           this.detonate(room);
-          this.markedForDeletion = true;
           return;
         }
       }
@@ -61,13 +69,15 @@ class VolcanicMeteorProjectile extends BaseEntity {
 
   detonate(room) {
     if (!room) return;
-    if (window.MagmaPuddleHazard) {
-      room.hazards.push(new window.MagmaPuddleHazard(this.x, this.y, 36, 12, 2.2));
+    if (window.MagmaPuddleHazard && Array.isArray(room.hazards) && room.hazards.length < 18) {
+      room.hazards.push(new window.MagmaPuddleHazard(this.x, this.y, 32, 12, 2.0));
     }
-    for (let i = 0; i < 8; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const spd = 40 + Math.random() * 80;
-      room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 3.5, '#ef4444', 0.4);
+    if (typeof room.spawnParticle === 'function') {
+      for (let i = 0; i < 6; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 40 + Math.random() * 80;
+        room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 3.5, '#ef4444', 0.4);
+      }
     }
   }
 
@@ -95,7 +105,8 @@ class ShadowSoulEntity extends BaseEntity {
     this.lifeTime = 3.5;
   }
 
-  update(dt, player, room) {
+  update(dt, arg1, arg2) {
+    const room = (arg1 && Array.isArray(arg1.enemies)) ? arg1 : ((arg2 && Array.isArray(arg2.enemies)) ? arg2 : null);
     this.lifeTime -= dt;
     if (this.lifeTime <= 0) {
       this.markedForDeletion = true;
@@ -323,10 +334,12 @@ var SynergyEngine = class SynergyEngine {
   onProjectileHit(proj, enemy, room, player) {
     if (!proj || !enemy || !room) return;
 
-    // 1. Supernova Volcánica
-    if (this.has('VOLCANIC_SUPERNOVA')) {
-      const meteorCount = 6;
-      for (let i = 0; i < meteorCount; i++) {
+    // 1. Supernova Volcánica (con límite de seguridad para evitar saturación de entidades)
+    if (this.has('VOLCANIC_SUPERNOVA') && !(proj instanceof VolcanicMeteorProjectile) && !proj._supernovaSpawned) {
+      proj._supernovaSpawned = true;
+      if (room.projectiles && room.projectiles.length < 85) {
+        const meteorCount = 6;
+        for (let i = 0; i < meteorCount; i++) {
         const ang = (i * Math.PI * 2) / meteorCount + Math.random() * 0.2;
         const spd = 160 + Math.random() * 60;
         room.projectiles.push(new VolcanicMeteorProjectile(
@@ -336,6 +349,7 @@ var SynergyEngine = class SynergyEngine {
           Math.sin(ang) * spd,
           Math.round((proj.damage || 15) * 0.65)
         ));
+        }
       }
     }
   }

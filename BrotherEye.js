@@ -401,9 +401,17 @@
     var isBossRoom = room.type === 'BOSS' || room.enemies.some(function (e) { return e.isBoss; });
 
     // A. Ajustar CANTIDAD de enemigos (solo en salas de combate normales/difíciles, no clonar al Boss)
-    if (!isBossRoom && Math.abs(mod.enemyCountMultiplier - 1.0) > 0.04) {
+    var regime = this.state4_adaptive.regime;
+    if (!isBossRoom && (Math.abs(mod.enemyCountMultiplier - 1.0) > 0.03 || regime !== 'EQUILIBRIO')) {
       var baseCount = room.enemies.length;
       var targetCount = Math.max(1, Math.round(baseCount * mod.enemyCountMultiplier));
+      if (regime === 'ACOMPAÑAR_BUILD') {
+        targetCount = Math.max(baseCount + 1, Math.ceil(baseCount * mod.enemyCountMultiplier));
+      } else if (regime === 'PIES_EN_LA_TIERRA') {
+        targetCount = Math.max(baseCount + 2, Math.ceil(baseCount * mod.enemyCountMultiplier));
+      } else if (regime === 'ALIVIO' && baseCount > 1) {
+        targetCount = Math.min(baseCount - 1, Math.floor(baseCount * mod.enemyCountMultiplier));
+      }
       var diff = targetCount - baseCount;
 
       if (diff > 0 && typeof room.getSafeSpawnPosition === 'function' && room.bounds) {
@@ -475,21 +483,28 @@
    * Nota: NO infla la vida de forma artificial para no arruinar las builds rotas.
    */
   BrotherEyeEngine.prototype.tuneSpawnedEnemy = function (enemy) {
-    if (!this.enabled || !enemy || enemy._brotherEyeTuned) return;
-    enemy._brotherEyeTuned = true;
+    if (!this.enabled || !enemy) return;
 
     var mod = this.state4_adaptive.nextRoomModifiers;
 
+    // Guardar stats originales en la primera pasada para poder recalibrar al entrar a la sala real
+    if (typeof enemy._baseContactDamage !== 'number' && typeof enemy.contactDamage === 'number') {
+      enemy._baseContactDamage = enemy.contactDamage;
+    }
+    if (typeof enemy._baseSpeed !== 'number' && typeof enemy.speed === 'number') {
+      enemy._baseSpeed = enemy.speed;
+    }
+
     // 1. Escalar Daño de Contacto y guardar multiplicador para sus proyectiles
-    if (typeof enemy.contactDamage === 'number') {
-      enemy.contactDamage = Math.max(1, Math.round(enemy.contactDamage * mod.enemyDamageMultiplier));
+    if (typeof enemy._baseContactDamage === 'number') {
+      enemy.contactDamage = Math.max(1, Math.round(enemy._baseContactDamage * mod.enemyDamageMultiplier));
     }
     enemy.eyeDamageMultiplier = mod.enemyDamageMultiplier;
 
     // 2. Escalar un poco su Velocidad (respetando topes de maniobrabilidad)
-    if (typeof enemy.speed === 'number') {
+    if (typeof enemy._baseSpeed === 'number') {
       var maxAllowedSpeed = enemy.isBoss ? 300 : 320;
-      enemy.speed = clamp(Math.round(enemy.speed * mod.enemySpeedMultiplier), 45, maxAllowedSpeed);
+      enemy.speed = clamp(Math.round(enemy._baseSpeed * mod.enemySpeedMultiplier), 45, maxAllowedSpeed);
     }
   };
 

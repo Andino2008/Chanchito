@@ -288,7 +288,8 @@ class StormWaveProjectile extends BaseEntity {
     this.playerRef = playerRef;
   }
 
-  update(dt, player, room) {
+  update(dt, arg1, arg2) {
+    const room = (arg1 && Array.isArray(arg1.enemies)) ? arg1 : ((arg2 && Array.isArray(arg2.enemies)) ? arg2 : null);
     this.lifeTime -= dt;
     if (this.lifeTime <= 0) {
       this.markedForDeletion = true;
@@ -361,7 +362,8 @@ class CryoShardProjectile extends BaseEntity {
     this.angle = Math.atan2(dirY, dirX);
   }
 
-  update(dt, player, room) {
+  update(dt, arg1, arg2) {
+    const room = (arg1 && Array.isArray(arg1.enemies)) ? arg1 : ((arg2 && Array.isArray(arg2.enemies)) ? arg2 : null);
     this.lifeTime -= dt;
     if (this.lifeTime <= 0) {
       this.markedForDeletion = true;

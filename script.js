@@ -8627,32 +8627,51 @@ class Room {
     }
 
     for (const proj of this.projectiles) {
-      for (const obs of this.obstacles) {
-        if (!obs.markedForDeletion && obs.collidesWithCircle(proj.x, proj.y, proj.radius)) {
-          obs.takeDamage(proj.damage, this);
-          proj.markedForDeletion = true;
-          break;
+      try {
+        for (const obs of this.obstacles) {
+          if (!obs.markedForDeletion && obs.collidesWithCircle(proj.x, proj.y, proj.radius)) {
+            obs.takeDamage(proj.damage, this);
+            proj.markedForDeletion = true;
+            break;
+          }
         }
+        if (!proj.markedForDeletion) {
+          proj.update(dt, this, player);
+        }
+      } catch (err) {
+        proj.markedForDeletion = true;
+        if (window.devConsole) window.devConsole.log('ERROR', 'Fallo en proyectil: ' + err.message);
       }
-      proj.update(dt, this, player);
     }
     this.projectiles = this.projectiles.filter((p) => !p.markedForDeletion);
 
     for (const eProj of this.enemyProjectiles) {
-      for (const obs of this.obstacles) {
-        if (!obs.markedForDeletion && obs.collidesWithCircle(eProj.x, eProj.y, eProj.radius)) {
-          obs.takeDamage(eProj.damage * 0.5, this);
-          eProj.markedForDeletion = true;
-          break;
+      try {
+        for (const obs of this.obstacles) {
+          if (!obs.markedForDeletion && obs.collidesWithCircle(eProj.x, eProj.y, eProj.radius)) {
+            obs.takeDamage(eProj.damage * 0.5, this);
+            eProj.markedForDeletion = true;
+            break;
+          }
         }
+        if (!eProj.markedForDeletion) {
+          eProj.update(dt, player, this);
+        }
+      } catch (err) {
+        eProj.markedForDeletion = true;
+        if (window.devConsole) window.devConsole.log('ERROR', 'Fallo en proyectil enemigo: ' + err.message);
       }
-      eProj.update(dt, player, this);
     }
     this.enemyProjectiles = this.enemyProjectiles.filter((ep) => !ep.markedForDeletion);
 
     // Procesar Trampas Ambientales y Hazards (afectan TANTO al jugador COMO a los enemigos)
     for (const haz of this.hazards) {
-      haz.update(dt, player, this);
+      try {
+        haz.update(dt, player, this);
+      } catch (err) {
+        haz.markedForDeletion = true;
+        if (window.devConsole) window.devConsole.log('ERROR', 'Fallo en hazard: ' + err.message);
+      }
     }
     this.hazards = this.hazards.filter((hz) => !hz.markedForDeletion);
 
@@ -11428,7 +11447,11 @@ class Game {
     }
 
     this.player.update(dt, this.input, this.currentRoom);
-    this.currentRoom.update(dt, this.player, this.currentFloor);
+    try {
+      this.currentRoom.update(dt, this.player, this.currentFloor);
+    } catch (err) {
+      if (window.devConsole) window.devConsole.log('ERROR', 'Error en Room.update: ' + err.message);
+    }
 
     const triggeredDoor = this.currentRoom.resolvePlayerBoundsAndDoors(this.player);
     if (triggeredDoor) {
