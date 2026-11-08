@@ -8460,6 +8460,12 @@ class Room {
       );
     }
 
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      for (const enemy of this.enemies) {
+        BrotherEye.tuneSpawnedEnemy(enemy);
+      }
+    }
+
     this.cleared = this.enemies.length === 0;
   }
 
@@ -8733,7 +8739,8 @@ class Room {
           if (Math.random() < gemChance) {
             this.coins.push(new VoidGem(enemy.x - 10, enemy.y + 6, 1));
           }
-          if (Math.random() < (player.hp < player.maxHp * 0.4 ? 0.35 : 0.18)) {
+          const eyeHeartBonus = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) ? BrotherEye.getHeartDropBonus() : 0;
+          if (Math.random() < ((player.hp < player.maxHp * 0.4 ? 0.35 : 0.18) + eyeHeartBonus)) {
             const hType = Math.random() < 0.25 ? 'SOUL' : (Math.random() < 0.4 ? 'HALF' : 'FULL');
             this.hearts.push(new HeartItem(enemy.x + 8, enemy.y + 6, hType));
           }
@@ -8757,6 +8764,9 @@ class Room {
 
     if (!this.cleared && this.enemies.length === 0) {
       this.cleared = true;
+      if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+        BrotherEye.onRoomExited(this, player, true);
+      }
     }
 
     if (
@@ -11010,15 +11020,21 @@ class Game {
       }
     }
 
+    const eyeSpawnMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
+      ? BrotherEye.getAdaptiveSpawnMultiplier()
+      : 1.0;
     this.currentFloor = new DungeonFloor(
       this.currentSection,
       this.currentLevel,
       CONFIG.ROOMS_PER_FLOOR,
-      this.player.enemySpawnMultiplier,
+      this.player.enemySpawnMultiplier * eyeSpawnMult,
       this.ui,
       this.player.relicChanceMultiplier
     );
     this.currentRoom = this.currentFloor.getRoom(0, 0);
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.onRoomEntered(this.currentRoom, this.player);
+    }
     this.syncWeaponButtonsUI();
     this.player.itemManager.onRoomStart(this.currentRoom);
 
@@ -11058,6 +11074,10 @@ class Game {
       this.currentRoom && this.currentRoom.relicChests
         ? this.currentRoom.relicChests.filter((c) => !c.opened)
         : [];
+
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.onRoomExited(this.currentRoom, this.player, this.currentRoom.cleared);
+    }
 
     this.currentRoom.projectiles = [];
     this.currentRoom.enemyProjectiles = [];
@@ -11246,6 +11266,10 @@ class Game {
 
     this.player.roomTransitionGrace = 0.35;
     this.player.itemManager.onRoomStart(this.currentRoom);
+
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.onRoomEntered(this.currentRoom, this.player);
+    }
 
     // Evento de cambio de habitación: actualiza Telemetría y Minimapa en el DOM
     this.ui.updateRoomInfo(this.currentRoom, this.currentFloor);

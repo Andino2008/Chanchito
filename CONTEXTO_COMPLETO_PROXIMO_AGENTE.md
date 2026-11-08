@@ -51,6 +51,7 @@ C:\experimentoweb\
 ├── boss_phases.js               # Módulo desacoplado de fases cinemáticas y telegrafiado de Jefes (BossPhaseManager).
 ├── synergies.js                 # Módulo desacoplado de sinergias emergentes game-breaker (SynergyEngine).
 ├── events.js                    # Módulo desacoplado de salas de desafío, monolitos y altares de sangre.
+├── BrotherEye.js                 # Módulo de Dificultad Adaptativa Inteligente (DDA) basado en telemetría de entrada/salida.
 ├── relics.js                    # Catálogo maestro de las 75 reliquias, ItemManager y sistema de Hooks.
 ├── script.js                    # Motor central, Game Loop, entidades, armas, jefes, salas, Input y UIManager.
 ├── CONTEXTO_PROYECTO.md         # Documento de contexto y registro histórico de versiones.
@@ -366,3 +367,15 @@ En la carpeta `<appDataDir>\brain\<conversation-id>\scratch\` se encuentran los 
 ### 14.3 Salas de Desafío y Eventos de Alto Riesgo (`events.js`)
 * `ChallengeMonolith`: Monolito de hordas en salas de combate de élite (`HardRoom`). Al activarse con `[E]`, bloquea las puertas y genera 2 oleadas de enemigos élites y colosos. Al vencerlos, desbloquea las puertas y otorga el **Cofre del Gran Campeón** (`ChampionChest`) con +45 Oro, +20 Gemas y Reliquia de alto nivel.
 * `BloodPactAltar`: Altar de sangre en `SanctuaryRoom`. Permite sacrificar 25 HP a cambio de un +35% de Daño de Ataque permanente para toda la partida.
+
+### 14.4 Motor de Dificultad Adaptativa (`BrotherEye.js`)
+* **Propósito y Aislamiento:** Diseñado para evitar que las curvas de dificultad dependan de fórmulas rígidas e infinitas por piso o NG+. Analiza el rendimiento orgánico del jugador entre la **entrada y salida** de cada habitación. Si se desea desactivar o trasladar a un modo de juego separado, basta con establecer `BrotherEye.enabled = false` o desacoplar el archivo sin romper nada del core.
+* **Métricas Analizadas por Sala:**
+  * **Tiempo de despeje (Clear Time):** Comparado contra un *benchmark* dinámico (14s base, x1.45 en salas difíciles, x2.5 en bosses).
+  * **Preservación de HP:** Bonificación por limpiezas impecables (0 daño recibido) vs. alivio por castigo crítico (>35% de vida perdida en la sala).
+  * **Estado agonizante:** Si el jugador entra en zona crítica (<25% HP), Brother Eye amortigua la hostilidad y aumenta el drop de corazones.
+* **Moduladores Emitidos:**
+  * `spawnMultiplier` (0.75x a 1.35x).
+  * `enemyHpMultiplier` (0.85x a 1.25x).
+  * `enemySpeedMultiplier` (0.90x a 1.15x).
+  * `heartDropBonus` (+0% a +20%).
