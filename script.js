@@ -1706,6 +1706,9 @@ class Projectile extends Entity {
 
     if (this.lifeTime <= 0) {
       this.markedForDeletion = true;
+      if (typeof EvolutionManager !== 'undefined' && this.evolutionId) {
+        EvolutionManager.onProjectileDetonate(this, null, room, player);
+      }
       return;
     }
 
@@ -1817,6 +1820,9 @@ class Projectile extends Entity {
 
         if (!this.piercing) {
           this.markedForDeletion = true;
+          if (typeof EvolutionManager !== 'undefined' && this.evolutionId) {
+            EvolutionManager.onProjectileDetonate(this, enemy, room, player);
+          }
           break;
         }
       }
@@ -2563,6 +2569,15 @@ class ProjectileWeapon extends Weapon {
             elemLevel
           );
           proj.lifeTime = 0.44; // Alcance corto/medio (~270px)
+          const pwEvo = typeof EvolutionManager !== 'undefined' ? EvolutionManager.getActiveEvolution(player, 'Pelotas') : null;
+          if (pwEvo) {
+            proj.evolutionId = pwEvo.id;
+            proj.color = pwEvo.color;
+            proj.borderColor = '#ffffff';
+            if (pwEvo.id === 'NAPALM_CLUSTER') {
+              proj.damage = Math.round(effectiveDamage * 1.25);
+            }
+          }
           room.projectiles.push(proj);
           player.itemManager.onShoot(proj, room);
         }
@@ -2606,6 +2621,15 @@ class ProjectileWeapon extends Weapon {
           heavyOrb.piercing = true;
           heavyOrb.maxPierces = 3;
           heavyOrb.isHeavyOrb = true;
+          const pwHeavyEvo = typeof EvolutionManager !== 'undefined' ? EvolutionManager.getActiveEvolution(player, 'Pelotas') : null;
+          if (pwHeavyEvo) {
+            heavyOrb.evolutionId = pwHeavyEvo.id;
+            heavyOrb.color = pwHeavyEvo.color;
+            heavyOrb.borderColor = '#ffffff';
+            if (pwHeavyEvo.id === 'NAPALM_CLUSTER') {
+              heavyOrb.damage = Math.round(effectiveDamage * 1.35);
+            }
+          }
           room.projectiles.push(heavyOrb);
           player.itemManager.onShoot(heavyOrb, room);
         }
@@ -2698,6 +2722,11 @@ class LongSwordWeapon extends Weapon {
       this.currentSwingElementLevel = player.getElementLevel(this.currentSwingElement);
       this.hitEnemies.clear();
       this.parriedProjectiles.clear();
+
+      // Hook de Evolución Mecánica de Armas
+      if (typeof EvolutionManager !== 'undefined') {
+        EvolutionManager.onSwordSwing(this, player, room, aimState);
+      }
 
       // En Modo Tajo Pesado: si tiene proyectiles extra, desata ondas de corte crescentes
       if (!isParryMode && player.extraProjectiles > 0) {
@@ -3098,7 +3127,7 @@ class ChargeLaserWeapon extends Weapon {
         }
       }
 
-      this.activeBeams.push({
+      const beamEntry = {
         x1: startX,
         y1: startY,
         x2: endX,
@@ -3107,7 +3136,13 @@ class ChargeLaserWeapon extends Weapon {
         halfWidth: beamHalfWidth,
         timer: 0.30,
         maxTimer: 0.30,
-      });
+      };
+
+      if (typeof EvolutionManager !== 'undefined') {
+        EvolutionManager.onLaserFired(this, player, room, aimState, beamEntry);
+      }
+
+      this.activeBeams.push(beamEntry);
     }
   }
 
@@ -6935,6 +6970,10 @@ class Player extends Entity {
     if (this.ui) {
       this.ui.updateElements(this.elementalPool);
     }
+    if (typeof EvolutionManager !== 'undefined') {
+      const currentRoom = (window.activeGameInstance && window.activeGameInstance.currentRoom) || null;
+      EvolutionManager.checkEvolutions(this, currentRoom, this.ui);
+    }
     return this.elementalPool[elementKey];
   }
 
@@ -10214,12 +10253,24 @@ class UIManager {
     if (this.dom.statMagnet) {
       this.dom.statMagnet.textContent = `x${player.coinMagnetMultiplier.toFixed(2)}`;
     }
+    const activeEvo = (typeof EvolutionManager !== 'undefined' && player.currentWeapon)
+      ? EvolutionManager.getActiveEvolution(player, player.currentWeapon.name)
+      : null;
+
     if (this.dom.statWeaponName && player.currentWeapon) {
-      this.dom.statWeaponName.textContent = player.currentWeapon.name;
+      if (activeEvo) {
+        this.dom.statWeaponName.innerHTML = `<span style="color: ${activeEvo.color}; text-shadow: 0 0 8px ${activeEvo.color}88;">★ ${activeEvo.title}</span>`;
+      } else {
+        this.dom.statWeaponName.textContent = player.currentWeapon.name;
+      }
     }
     if (this.dom.hudWeaponSymbol && typeof player.currentWeaponIndex === 'number') {
-      const symbols = ['🔮', '⚡', '⚔️'];
-      this.dom.hudWeaponSymbol.textContent = symbols[player.currentWeaponIndex] || '🔮';
+      if (activeEvo) {
+        this.dom.hudWeaponSymbol.textContent = activeEvo.symbol;
+      } else {
+        const symbols = ['🔮', '⚡', '⚔️'];
+        this.dom.hudWeaponSymbol.textContent = symbols[player.currentWeaponIndex] || '🔮';
+      }
     }
     if (this.dom.hudWeaponMode && player.currentWeapon && typeof player.currentWeapon.getModeBadge === 'function') {
       this.dom.hudWeaponMode.textContent = player.currentWeapon.getModeBadge();
