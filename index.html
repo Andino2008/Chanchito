@@ -2425,6 +2425,120 @@
       text-align: right;
       font-size: 0.72rem;
     }
+
+    /* =====================================================================
+       ESTILOS DE FASE 2 DE JEFES Y BANNERS CINEMÁTICOS (v2.5)
+       ===================================================================== */
+    .boss-cinematic-banner {
+      position: absolute;
+      top: 18%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.92);
+      background: linear-gradient(135deg, rgba(35, 8, 14, 0.96), rgba(18, 4, 8, 0.98));
+      border: 2px solid #ef4444;
+      border-radius: 12px;
+      padding: 16px 36px;
+      text-align: center;
+      box-shadow: 0 0 50px rgba(239, 68, 68, 0.75), inset 0 0 25px rgba(220, 38, 38, 0.4);
+      z-index: 150;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+    .boss-cinematic-banner.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    .boss-cinematic-banner.hidden {
+      display: none !important;
+    }
+    .boss-banner-sub {
+      font-size: 0.75rem;
+      font-weight: 900;
+      letter-spacing: 3px;
+      color: #fca5a5;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      animation: pulseAlert 0.8s infinite alternate;
+    }
+    .boss-banner-title {
+      font-size: 1.55rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #ffffff;
+      text-transform: uppercase;
+      text-shadow: 0 0 16px rgba(239, 68, 68, 0.95);
+      margin-bottom: 6px;
+    }
+    .boss-banner-desc {
+      font-size: 0.85rem;
+      color: #fecaca;
+      max-width: 480px;
+      line-height: 1.4;
+    }
+    @keyframes pulseAlert {
+      from { opacity: 0.7; }
+      to { opacity: 1; text-shadow: 0 0 12px #ef4444; }
+    }
+    .boss-souls-panel.phase-2-enrage {
+      border-color: #ef4444 !important;
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.9), 0 0 35px rgba(239, 68, 68, 0.6) !important;
+      animation: bossEnragePulse 1.2s infinite alternate !important;
+    }
+    @keyframes bossEnragePulse {
+      from { border-color: rgba(239, 68, 68, 0.6); }
+      to { border-color: rgba(248, 113, 113, 1); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.95), 0 0 45px rgba(239, 68, 68, 0.85); }
+    }
+    .boss-souls-panel.phase-2-enrage #boss-hp-fill {
+      background: linear-gradient(90deg, #b91c1c, #ef4444, #f59e0b) !important;
+    }
+
+    /* Banner de Sinergia Emergente Desatada */
+    .synergy-unlock-banner {
+      position: absolute;
+      top: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.98));
+      border: 1.5px solid #38bdf8;
+      border-radius: 10px;
+      padding: 12px 28px;
+      text-align: center;
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.85), 0 0 30px rgba(56, 189, 248, 0.5);
+      z-index: 140;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+    .synergy-unlock-banner.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .synergy-unlock-banner.hidden {
+      display: none !important;
+    }
+    .synergy-banner-tag {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #38bdf8;
+      margin-bottom: 2px;
+    }
+    .synergy-banner-name {
+      font-size: 1.25rem;
+      font-weight: 900;
+      color: #f8fafc;
+      letter-spacing: 1.5px;
+      text-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
+      margin-bottom: 4px;
+    }
+    .synergy-banner-desc {
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      max-width: 440px;
+      line-height: 1.35;
+    }
+
   </style>
 </head>
 <body>
@@ -2831,7 +2945,13 @@
   <script src="evolutions.js"></script>
   <!-- 4. Sistema Modular de Transmutación y Reciclaje de Reliquias (v2.4) -->
   <script src="transmutation.js"></script>
-  <!-- 5. Motor principal y ejecutor del juego -->
+  <!-- 5. Sistema Cinemático de Fases de Jefes (v2.5) -->
+  <script src="boss_phases.js"></script>
+  <!-- 6. Motor de Sinergias Emergentes Game-Breaker (v2.5) -->
+  <script src="synergies.js"></script>
+  <!-- 7. Salas de Desafío y Eventos de Alto Riesgo (v2.5) -->
+  <script src="events.js"></script>
+  <!-- 8. Motor principal y ejecutor del juego -->
   <script src="script.js"></script>
 
   <!-- =====================================================================
@@ -2924,6 +3044,25 @@
         <button class="btn-transmutation-close" id="btn-transmutation-close">SALIR DE LA FORJA [ESC]</button>
       </div>
     </div>
+  </div>
+
+
+  <!-- =====================================================================
+       BANNER CINEMÁTICO DE TRANSICIÓN DE FASE DE JEFES (v2.5)
+       ===================================================================== -->
+  <div class="boss-cinematic-banner hidden" id="boss-cinematic-banner">
+    <div class="boss-banner-sub">⚠️ PROTOCOLO DE EXTERMINIO // FASE 2 ⚠️</div>
+    <div class="boss-banner-title" id="boss-banner-title">¡FURIA DESATADA!</div>
+    <div class="boss-banner-desc" id="boss-banner-desc">El Jefe supera sus límites y despliega ataques devastadores. ¡Usa el Dash [SHIFT] para esquivar!</div>
+  </div>
+
+  <!-- =====================================================================
+       BANNER DE FUSIÓN DE SINERGIA DESATADA (v2.5)
+       ===================================================================== -->
+  <div class="synergy-unlock-banner hidden" id="synergy-unlock-banner">
+    <div class="synergy-banner-tag">⚡ FUSIÓN DE PODER DESATADA ⚡</div>
+    <div class="synergy-banner-name" id="synergy-banner-name">SUPERNOVA VOLCÁNICA</div>
+    <div class="synergy-banner-desc" id="synergy-banner-desc">Tus proyectiles detonan en meteoros ardientes.</div>
   </div>
 
 </body>

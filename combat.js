@@ -172,7 +172,7 @@ class CombatSystem {
             player.itemManager.onShoot(reflectedProj, room);
 
             // Sinergia Parry del Dios del Trueno
-            if (player.synergyManager && player.synergyManager.has('THUNDER_GOD_PARRY')) {
+            if ((player.synergyManager && player.synergyManager.has('THUNDER_GOD_PARRY')) || (window.synergyEngine && window.synergyEngine.has('THUNDER_GOD_PARRY'))) {
               for (const en of room.enemies) {
                 if (en.markedForDeletion || en.isBurrowed) continue;
                 en.takeDamage(Math.round(52 * player.damageMultiplier), 0, 0, 'LIGHTNING');
@@ -288,4 +288,18 @@ class CombatSystem {
 
 // Exponer en el entorno global para fácil acceso y depuración
 window.COMBAT_CONFIG = COMBAT_CONFIG;
+
+// Métodos estáticos de conveniencia para efectos viscerales globales
+CombatSystem.triggerScreenShake = function(intensity = 10, duration = 0.3) {
+  if (window.activeGameInstance && typeof window.activeGameInstance.triggerScreenShake === 'function') {
+    window.activeGameInstance.triggerScreenShake(intensity, duration);
+  }
+};
+
+CombatSystem.triggerHitStop = function(duration = 0.05) {
+  if (window.activeGameInstance && typeof window.activeGameInstance.triggerHitStop === 'function') {
+    window.activeGameInstance.triggerHitStop(duration);
+  }
+};
+
 window.CombatSystem = CombatSystem;

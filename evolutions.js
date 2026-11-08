@@ -123,7 +123,7 @@ const EVOLUTION_DEFS = {
  * Charco de Magma Ardiente persistente generado por el Lanzagranadas de Napalm.
  */
 // Clase base defensiva desacoplada para evitar dependencias de orden de carga
-const BaseEntity = (typeof Entity !== 'undefined') ? Entity : class {
+var BaseEntity = window.BaseEntity || (typeof Entity !== 'undefined' ? Entity : class {
   constructor(x, y, radius, color) {
     this.x = x;
     this.y = y;
@@ -138,7 +138,8 @@ const BaseEntity = (typeof Entity !== 'undefined') ? Entity : class {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
   }
-};
+});
+window.BaseEntity = BaseEntity;
 
 class MagmaPuddleHazard extends BaseEntity {
   constructor(x, y, radius = 38, dps = 28, duration = 3.5) {

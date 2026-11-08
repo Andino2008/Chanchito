@@ -48,6 +48,9 @@ C:\experimentoweb\
 ├── combat.js                    # Módulo desacoplado de combate visceral (COMBAT_CONFIG y CombatSystem).
 ├── evolutions.js                # Módulo desacoplado de evoluciones de armas (EVOLUTION_DEFS y EvolutionManager).
 ├── transmutation.js             # Módulo desacoplado de reciclaje y forja de reliquias (Yunque Transmutador).
+├── boss_phases.js               # Módulo desacoplado de fases cinemáticas y telegrafiado de Jefes (BossPhaseManager).
+├── synergies.js                 # Módulo desacoplado de sinergias emergentes game-breaker (SynergyEngine).
+├── events.js                    # Módulo desacoplado de salas de desafío, monolitos y altares de sangre.
 ├── relics.js                    # Catálogo maestro de las 75 reliquias, ItemManager y sistema de Hooks.
 ├── script.js                    # Motor central, Game Loop, entidades, armas, jefes, salas, Input y UIManager.
 ├── CONTEXTO_PROYECTO.md         # Documento de contexto y registro histórico de versiones.
@@ -336,3 +339,30 @@ En la carpeta `<appDataDir>\brain\<conversation-id>\scratch\` se encuentran los 
 
 ---
 *Fin del Documento de Contexto Maestro v2.2. Este archivo es autosuficiente y provee toda la información técnica necesaria para continuar el desarrollo, balance o creación de nuevas características sin perder el hilo de las decisiones arquitectónicas previas.*
+
+---
+
+## 14. SISTEMAS MODULARES AVANZADOS (v2.5)
+
+### 14.1 Fases Cinemáticas de Jefes y Telegrafiado (`boss_phases.js`)
+* **Phase Break al 50% de HP:** Triggered en `Boss.takeDamage()`. Proporciona 1.2s de invulnerabilidad, sacudida de pantalla épica (`CombatSystem.triggerScreenShake(24, 0.75)`), hit-stop (0.38s), onda expansiva de empuje segura y banner cinemático en HTML (`#boss-cinematic-banner`).
+* **Peligros Mecánicos Activos:**
+  * `BossShockwaveHazard`: Anillo sísmico expansivo; evadible al 100% mediante I-Frames del Dash o Parry.
+  * `AbyssalGeyserHazard`: Círculos de peligro telegrafiados que detonan en columnas oscuras persistentes.
+  * `CelestialJudgmentPillar`: Columnas verticales de juicio divino que castigan la sala tras 0.85s.
+* **Escalado Anti-Esponja:** Reducción del 22% del HP base de Jefes para garantizar duelos rápidos y rítmicos.
+
+### 14.2 Motor de Sinergias Emergentes Game-Breaker (`synergies.js`)
+* **Filosofía *The Binding of Isaac*:** Las sinergias mecánicas rompen el juego en combinaciones extravagantes:
+  * `KINETIC_CHAOS`: +45% de daño por rebote en pared, tamaño agrandado y ondas de choque sísmicas.
+  * `ABSOLUTE_ZERO`: El Láser congela enemigos por 2.2s y genera fisuras criogénicas que ralentizan proyectiles un 70%.
+  * `VOLCANIC_SUPERNOVA`: Los proyectiles pesados detonan en un anillo de 6 meteoritos ardientes (`VolcanicMeteorProjectile`).
+  * `THUNDER_GOD_PARRY`: Desviar proyectiles convoca relámpagos divinos sobre TODOS los enemigos de la sala y reinicia el Dash.
+  * `PLASMA_VORTEX`: Las sierras absorben balas enemigas y disparan contraataques de plasma teledirigidos.
+  * `GRAVITATIONAL_SINGULARITY`: Vórtice gravitatorio continuo (160px) que agrupa enemigos hacia los disparos.
+  * `SHADOW_SWARM`: Enemigos caídos liberan almas espectrales aliadas (`ShadowSoulEntity`).
+* **Banner en DOM:** `#synergy-unlock-banner` avisa en tiempo real con fanfarria de sintetizador.
+
+### 14.3 Salas de Desafío y Eventos de Alto Riesgo (`events.js`)
+* `ChallengeMonolith`: Monolito de hordas en salas de combate de élite (`HardRoom`). Al activarse con `[E]`, bloquea las puertas y genera 2 oleadas de enemigos élites y colosos. Al vencerlos, desbloquea las puertas y otorga el **Cofre del Gran Campeón** (`ChampionChest`) con +45 Oro, +20 Gemas y Reliquia de alto nivel.
+* `BloodPactAltar`: Altar de sangre en `SanctuaryRoom`. Permite sacrificar 25 HP a cambio de un +35% de Daño de Ataque permanente para toda la partida.

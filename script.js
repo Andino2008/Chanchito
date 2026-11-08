@@ -1678,6 +1678,10 @@ class Projectile extends Entity {
       this.borderColor = ELEMENTS[this.element].border;
     }
 
+    if (window.synergyEngine) {
+      window.synergyEngine.onProjectileUpdate(this, dt, room, player);
+    }
+
     // Si tiene soft-homing (Ojo cazador), curva ligeramente su vector de velocidad hacia el enemigo más cercano
     if (this.homingStrength > 0 && room.enemies.length > 0) {
       let closest = null;
@@ -1807,6 +1811,9 @@ class Projectile extends Entity {
         // Ejecutar Hook `onHit` del ItemManager del jugador
         if (player && player.itemManager) {
           player.itemManager.onHit(this, enemy, room, dealt);
+        }
+        if (window.synergyEngine) {
+          window.synergyEngine.onProjectileHit(this, enemy, room, player);
         }
 
         this.hitEnemies.add(enemy);
@@ -3427,6 +3434,11 @@ class Enemy extends Entity {
     if (this.hp <= 0) {
       this.hp = 0;
       this.markedForDeletion = true;
+      if (window.synergyEngine) {
+        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
+        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
+        window.synergyEngine.onEnemyKilled(this, room, player);
+      }
     }
     return finalDamage;
   }
@@ -4566,6 +4578,9 @@ class Boss extends Enemy {
     // Escalado de salud y daño de Jefe según `ngPlusLevel`
     const baseBossHp = 620 + levelNumber * 120 + (sectionNumber - 1) * 280;
     this.maxHp = Math.round(baseBossHp * CONFIG.ENEMY_HP_MULTIPLIER * this.ngMult);
+    if (window.bossPhaseManager) {
+      window.bossPhaseManager.tuneBossHp(this);
+    }
     this.hp = this.maxHp;
     this.contactDamage = Math.round(25 * this.ngMult);
     const baseBossSpeed = 110 + ((sectionNumber - 1) * 4 + levelNumber) * 4;
@@ -4679,6 +4694,11 @@ class Boss extends Enemy {
     if (!this.phaseChanged && this.hp > 0 && this.hp <= this.maxHp * 0.5) {
       this.phaseChanged = true;
       this.phase = 2;
+      if (window.bossPhaseManager) {
+        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
+        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
+        window.bossPhaseManager.triggerPhaseShift(this, room, player);
+      }
       this.onPhaseChange();
     }
 
@@ -4693,6 +4713,9 @@ class Boss extends Enemy {
    * Renderiza todos los indicadores de peligro (Telegrafiado) en el suelo antes del cuerpo.
    */
   drawTelegraphs(ctx) {
+    if (window.bossPhaseManager) {
+      window.bossPhaseManager.drawEnrageAura(ctx, this);
+    }
     if (this.telegraphs.length === 0) return;
 
     ctx.save();
@@ -5040,8 +5063,11 @@ class GoliatBoss extends Boss {
         this.y = ROOM_BOUNDS.centerY;
         this.telegraphs = [];
 
-        // Al caer, emite 3 entidades en forma de anillos expansivos
+        // Al caer, emite 3 entidades en forma de anillos expansivos + BossShockwaveHazard
         if (room) {
+          if (typeof BossShockwaveHazard !== 'undefined') {
+            room.hazards.push(new BossShockwaveHazard(this.x, this.y, '#ef4444', 360, 520, 18));
+          }
           for (let i = 0; i < 3; i++) {
             room.hazards.push(
               new ExpandingRingHazard(
@@ -5873,6 +5899,9 @@ class AbismoBoss extends Boss {
       currentPermanent[0].markedForDeletion = true;
     }
     room.hazards.push(new PermanentCrackedGroundHazard(this.x, this.y, 48, 16));
+    if (this.phase === 2 && typeof AbyssalGeyserHazard !== 'undefined') {
+      room.hazards.push(new AbyssalGeyserHazard(this.x, this.y, 55, 0.9, 1.4, 20));
+    }
   }
 
   executeEmergeExplosion(targetEntity, room) {
@@ -6341,6 +6370,13 @@ class SerafinBoss extends Boss {
     this.speed = this.basePhase1Speed * 2.0; // Duplica su velocidad de movimiento
     this.isGuarding = false;
     this.setupTriangleComboVertices();
+    if (typeof CelestialJudgmentPillar !== 'undefined') {
+      const room = window.activeGameInstance ? window.activeGameInstance.currentRoom : null;
+      const player = window.activeGameInstance ? window.activeGameInstance.player : null;
+      if (room && player) {
+        room.hazards.push(new CelestialJudgmentPillar(player.x, ROOM_BOUNDS.centerY, 60, 550, 0.85, 24));
+      }
+    }
     this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.28);
   }
 
@@ -7240,6 +7276,13 @@ class Player extends Entity {
         this.synergyManager.update(this, this.ui, room);
       } catch (err) {
         console.error('Error actualizando sinergias:', err);
+      }
+    }
+    if (window.synergyEngine) {
+      try {
+        window.synergyEngine.update(this, this.ui, room);
+      } catch (err) {
+        console.error('Error actualizando synergyEngine:', err);
       }
     }
   }
@@ -9069,6 +9112,10 @@ class HardRoom extends Room {
   }
 
   populateRoomContent(spawnMultiplier = 1.0, uiManager = null, eliteChanceMult = 1.0) {
+    // Spawn de Monolito de Desafío de Hordas en salas de élite
+    if (typeof ChallengeMonolith !== 'undefined') {
+      this.hazards.push(new ChallengeMonolith(this.bounds.centerX, this.bounds.centerY));
+    }
     // +50% de enemigos
     this.spawnStandardWave(1.5, spawnMultiplier, eliteChanceMult);
 
@@ -9206,6 +9253,9 @@ class SanctuaryRoom extends Room {
     // 1. Izquierda: Poción de Vida (Restaura 30% HP Máxima)
     // 2. Centro: Botas de Agilidad (+Velocidad Base permanente)
     // 3. Derecha: Placas de Defensa (+Defensa/Armadura Base permanente)
+    if (typeof BloodPactAltar !== 'undefined') {
+      this.hazards.push(new BloodPactAltar(ROOM_BOUNDS.centerX, ROOM_BOUNDS.bottom - 75));
+    }
     this.altars = [
       new SanctuaryAltar(
         ROOM_BOUNDS.centerX - spacing,
@@ -10643,6 +10693,7 @@ class UIManager {
     if (!boss || boss.markedForDeletion || (room && room.type !== 'BOSS')) {
       this.dom.bossPanel.classList.add('hidden');
       this.dom.bossPanel.classList.remove('active-boss');
+      this.dom.bossPanel.classList.remove('phase-2-enrage');
       const defeated = room && room.type === 'BOSS' && room.cleared;
       if (this.dom.bossPhaseBadge) {
         this.dom.bossPhaseBadge.textContent = defeated ? 'DERROTADO' : 'EN ESPERA';
