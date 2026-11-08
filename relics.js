@@ -2543,6 +2543,32 @@ class ItemManager {
   }
 
   /**
+   * Elimina una reliquia del inventario, desuscribe todos sus hooks y recalcula pasivas.
+   * @param {string} relicId
+   * @returns {boolean} true si fue eliminada exitosamente
+   */
+  removeRelic(relicId) {
+    if (!this.ownedSet || !this.ownedSet.has(relicId)) return false;
+
+    this.ownedSet.delete(relicId);
+    this.ownedMap.delete(relicId);
+    this.relicStates.delete(relicId);
+    this.ownedRelics = this.ownedRelics.filter(r => r && r.id !== relicId && r.key !== relicId);
+
+    for (const hookName of Object.keys(this.hookSubscribers)) {
+      this.hookSubscribers[hookName] = this.hookSubscribers[hookName].filter(
+        sub => sub && sub.relic && sub.relic.id !== relicId && sub.relic.key !== relicId
+      );
+    }
+
+    this.applyPassiveStats();
+    if (this.player.ui) {
+      this.player.ui.updateRelics(this.ownedRelics, null);
+    }
+    return true;
+  }
+
+  /**
    * Añade una reliquia por su ID o incrementa su nivel (`relic.level++`) si el jugador ya la posee.
    */
   addRelic(relicId) {

@@ -35,7 +35,8 @@ Para mantener la integridad, estabilidad y rendimiento del juego, cualquier agen
    - `relics.js` se carga **primero**: define el catálogo `RELIC_CATALOG`, las claves `RELIC_KEYS` y la clase `ItemManager`.
    - `combat.js` se carga **segundo**: sistema modular de combate, `COMBAT_CONFIG`, cancelación de animaciones (Dash), corte de proyectiles y Game Juice.
    - `evolutions.js` se carga **tercero**: sistema modular de evolución mecánica de armas (EVOLUTION_DEFS y EvolutionManager estilo Vampire Survivors / Hades).
-   - `script.js` se carga **cuarto**: contiene el motor central, física vectorial, clases de armas, entidades, enemigos, jefes, salas, generador de mazmorras y la clase `Game`.
+   - `transmutation.js` se carga **cuarto**: sistema modular de transmutación, reciclaje y forja de reliquias (TransmutationAnvil y TransmutationManager).
+   - `script.js` se carga **quinto**: contiene el motor central, física vectorial, clases de armas, entidades, enemigos, jefes, salas, generador de mazmorras y la clase `Game`.
 
 ---
 
@@ -46,6 +47,7 @@ C:\experimentoweb\
 ├── index.html                   # Shell HTML5, capas del HUD flotante, modal TAB, menú de pausa y CSS completo.
 ├── combat.js                    # Módulo desacoplado de combate visceral (COMBAT_CONFIG y CombatSystem).
 ├── evolutions.js                # Módulo desacoplado de evoluciones de armas (EVOLUTION_DEFS y EvolutionManager).
+├── transmutation.js             # Módulo desacoplado de reciclaje y forja de reliquias (Yunque Transmutador).
 ├── relics.js                    # Catálogo maestro de las 75 reliquias, ItemManager y sistema de Hooks.
 ├── script.js                    # Motor central, Game Loop, entidades, armas, jefes, salas, Input y UIManager.
 ├── CONTEXTO_PROYECTO.md         # Documento de contexto y registro histórico de versiones.

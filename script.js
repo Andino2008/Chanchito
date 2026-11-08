@@ -7977,6 +7977,7 @@ class Room {
     this.relicChests = [];
     this.lockedChests = [];
     this.vaultChest = null;
+    this.transmutationAnvil = null;
     this.shopItems = [];
     this.shopSelectionMade = false;
     this.particles = [];
@@ -8534,6 +8535,9 @@ class Room {
     if (this.vaultChest) {
       this.vaultChest.update(dt, player, this);
     }
+    if (this.transmutationAnvil) {
+      this.transmutationAnvil.update(dt, player, this);
+    }
 
     for (const altar of this.altars) {
       altar.update(dt, player, this);
@@ -8894,6 +8898,7 @@ class Room {
     for (const rChest of this.relicChests) rChest.draw(ctx);
     for (const lc of this.lockedChests) lc.draw(ctx);
     if (this.vaultChest) this.vaultChest.draw(ctx);
+    if (this.transmutationAnvil) this.transmutationAnvil.draw(ctx);
 
     if (this.isExitRoom) {
       this.drawPortalVortex(
@@ -9150,7 +9155,10 @@ class TreasureRoom extends Room {
     super(gridX, gridY, 'TREASURE', sectionNumber, levelNumber, 'OPEN');
     this.cleared = true;
     const relicId = this.pickTreasureRelic();
-    this.pedestals.push(new ItemPedestal(ROOM_BOUNDS.centerX, ROOM_BOUNDS.centerY, relicId));
+    this.pedestals.push(new ItemPedestal(ROOM_BOUNDS.centerX - 50, ROOM_BOUNDS.centerY, relicId));
+    if (typeof TransmutationAnvil !== 'undefined') {
+      this.transmutationAnvil = new TransmutationAnvil(ROOM_BOUNDS.centerX + 150, ROOM_BOUNDS.centerY);
+    }
   }
 
   getHudTypeLabel() {
@@ -9248,7 +9256,10 @@ class ShopRoom extends Room {
       y: ROOM_BOUNDS.top + 95,
       radius: 26,
     };
-    this.vaultChest = new VaultChest(ROOM_BOUNDS.centerX, ROOM_BOUNDS.bottom - 75);
+    this.vaultChest = new VaultChest(ROOM_BOUNDS.centerX - 130, ROOM_BOUNDS.bottom - 75);
+    if (typeof TransmutationAnvil !== 'undefined') {
+      this.transmutationAnvil = new TransmutationAnvil(ROOM_BOUNDS.centerX + 130, ROOM_BOUNDS.bottom - 75);
+    }
     this.setupShopItems();
   }
 
