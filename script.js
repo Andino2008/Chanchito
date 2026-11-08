@@ -1303,27 +1303,35 @@ class LockedChest extends Entity {
       return;
     }
 
-    if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
-      if (player.keys > 0) {
-        player.useKey();
-        this.openChest(player, room);
+    // Colisión física sólida: el cofre con candado es un obstáculo físico y NUNCA se abre
+    // solo al chocar contra él. Solo se abre explícitamente con [E] o haciendo clic en el prompt.
+    const dist = Math.hypot(player.x - this.x, player.y - this.y);
+    const minDist = this.radius + player.radius;
+    if (dist < minDist) {
+      const overlap = minDist - dist;
+      if (dist > 0.0001) {
+        player.x += ((player.x - this.x) / dist) * overlap;
+        player.y += ((player.y - this.y) / dist) * overlap;
       } else {
-        if (!this.lastWarnTimer || Date.now() - this.lastWarnTimer > 1800) {
-          this.lastWarnTimer = Date.now();
-          soundManager.playProcedural('hurt');
-          if (player.ui) {
-            player.ui.showToast('🔒 CANDADO BLOQUEADO: Presiona [E] para FORZARLO (-15 HP) o usa 1 Llave [🔑]');
-            player.ui.spawnFloatingText('[E] FORZAR CANDADO (-15 HP)', '#ef4444', this.x, this.y - 25);
-          }
-        }
+        player.x += minDist;
       }
+    }
+  }
+
+  interact(player, room) {
+    if (this.opened) return;
+    if (player.keys > 0) {
+      player.useKey();
+      this.openChest(player, room);
+    } else {
+      this.forceOpen(player, room);
     }
   }
 
   forceOpen(player, room) {
     if (this.opened || !player) return;
     // Forzar el candado pagando 15 HP de integridad
-    player.takeDamage(15, room, { isProjectile: false });
+    player.takeDamage(15, room, { isProjectile: false, ignoreInvulnerability: true, isSacrifice: true });
     soundManager.playProcedural('break_rock');
     if (window.activeGameInstance) {
       window.activeGameInstance.triggerScreenShake(5.0, 0.2);
@@ -1451,7 +1459,7 @@ class VaultChest extends Entity {
 
   forceOpen(player, room) {
     if (this.opened || !player) return;
-    player.takeDamage(25, room, { isProjectile: false });
+    player.takeDamage(25, room, { isProjectile: false, ignoreInvulnerability: true, isSacrifice: true });
     soundManager.playProcedural('break_rock');
     if (window.activeGameInstance) {
       window.activeGameInstance.triggerScreenShake(7.0, 0.25);
@@ -7167,9 +7175,10 @@ class Player extends Entity {
    * y dispara actualización Event-Driven de Salud/Stats en el DOM.
    */
   takeDamage(amount, room, options = {}) {
-    if (this.invulnerableTimer > 0 || this.roomTransitionGrace > 0) return;
+    if (!options.ignoreInvulnerability && (this.invulnerableTimer > 0 || this.roomTransitionGrace > 0)) return;
 
-    const mitigatedAmount = Math.max(1, Math.round(amount * this.getDefenseMitigationMultiplier()));
+    const isSacrifice = Boolean(options.isSacrifice || options.ignoreDefense);
+    const mitigatedAmount = isSacrifice ? amount : Math.max(1, Math.round(amount * this.getDefenseMitigationMultiplier()));
     const damageContext = {
       amount: mitigatedAmount,
       isProjectile: Boolean(options.isProjectile),
@@ -8602,15 +8611,22 @@ class Room {
     }
   }
 
-  resolvePlayerBoundsAndDoors(player) {
+  resolvePlayerBoundsAndDoors(player, floor) {
     const halfDoor = CONFIG.DOOR_WIDTH / 2;
     const b = this.bounds;
+    const activeFloor = floor || window.activeGameInstance?.currentFloor;
+    const isTargetLocked = (dx, dy) => {
+      if (!activeFloor) return false;
+      const target = activeFloor.getRoom(this.gridX + dx, this.gridY + dy);
+      return Boolean(target && target.isLocked);
+    };
 
     // 1. Puerta Norte
     if (player.y - player.radius <= b.top) {
       const doorPos = this.getDoorPosition('N');
       const inDoorSpan = Math.abs(player.x - doorPos.x) <= halfDoor - player.radius * 0.4;
-      if (this.cleared && this.doors.N && inDoorSpan) {
+      const isLocked = isTargetLocked(0, -1);
+      if (this.cleared && this.doors.N && inDoorSpan && !isLocked) {
         if (player.y <= b.top - 4) return 'N';
       } else {
         player.y = b.top + player.radius;
@@ -8621,7 +8637,8 @@ class Room {
     if (player.y + player.radius >= b.bottom) {
       const doorPos = this.getDoorPosition('S');
       const inDoorSpan = Math.abs(player.x - doorPos.x) <= halfDoor - player.radius * 0.4;
-      if (this.cleared && this.doors.S && inDoorSpan) {
+      const isLocked = isTargetLocked(0, 1);
+      if (this.cleared && this.doors.S && inDoorSpan && !isLocked) {
         if (player.y >= b.bottom + 4) return 'S';
       } else {
         player.y = b.bottom - player.radius;
@@ -8632,7 +8649,8 @@ class Room {
     if (player.x - player.radius <= b.left) {
       const doorPos = this.getDoorPosition('W');
       const inDoorSpan = Math.abs(player.y - doorPos.y) <= halfDoor - player.radius * 0.4;
-      if (this.cleared && this.doors.W && inDoorSpan) {
+      const isLocked = isTargetLocked(-1, 0);
+      if (this.cleared && this.doors.W && inDoorSpan && !isLocked) {
         if (player.x <= b.left - 4) return 'W';
       } else {
         player.x = b.left + player.radius;
@@ -8643,7 +8661,8 @@ class Room {
     if (player.x + player.radius >= b.right) {
       const doorPos = this.getDoorPosition('E');
       const inDoorSpan = Math.abs(player.y - doorPos.y) <= halfDoor - player.radius * 0.4;
-      if (this.cleared && this.doors.E && inDoorSpan) {
+      const isLocked = isTargetLocked(1, 0);
+      if (this.cleared && this.doors.E && inDoorSpan && !isLocked) {
         if (player.x >= b.right + 4) return 'E';
       } else {
         player.x = b.right - player.radius;
@@ -8980,14 +8999,14 @@ class Room {
     this.particles = this.particles.filter((pt) => pt.lifeTime > 0);
 
     // Actualización de interacción en el mundo y prompt [E] (v2.5)
-    const nearest = this.getNearestInteractable(player);
+    const nearest = this.getNearestInteractable(player, floor);
     this.currentInteractable = nearest;
     if (player && player.ui && typeof player.ui.updateInteractPrompt === 'function') {
       player.ui.updateInteractPrompt(nearest);
     }
   }
 
-  getNearestInteractable(player) {
+  getNearestInteractable(player, floor) {
     if (!player || player.hp <= 0) return null;
     let closest = null;
     let closestDist = Infinity;
@@ -9171,6 +9190,63 @@ class Room {
       }
     }
 
+    // 7. Puertas Bloqueadas / Cerradas con Llave (SHOP o TREASURE)
+    const activeFloor = floor || window.activeGameInstance?.currentFloor;
+    if (activeFloor && this.cleared) {
+      const doorDirs = [
+        { dir: 'N', dx: 0, dy: -1 },
+        { dir: 'S', dx: 0, dy: 1 },
+        { dir: 'W', dx: -1, dy: 0 },
+        { dir: 'E', dx: 1, dy: 0 }
+      ];
+      for (const dInfo of doorDirs) {
+        if (!this.doors[dInfo.dir]) continue;
+        const targetRoom = activeFloor.getRoom(this.gridX + dInfo.dx, this.gridY + dInfo.dy);
+        if (targetRoom && targetRoom.isLocked) {
+          const dPos = this.getDoorPosition(dInfo.dir);
+          const d = Math.hypot(player.x - dPos.x, player.y - dPos.y);
+          if (d <= 75 && d < closestDist) {
+            closestDist = d;
+            const hasKey = player.keys > 0;
+            const roomName = targetRoom.type === 'SHOP' ? 'Tienda' : (targetRoom.type === 'TREASURE' ? 'Sala del Tesoro' : 'Sala Bloqueada');
+            closest = {
+              entity: targetRoom,
+              x: dPos.x,
+              y: dPos.y,
+              title: '🔒 PUERTA CON CERRADURA',
+              desc: hasKey ? `Abrir cerrojo a la ${roomName}` : 'Forzar cerrojo con sangre (-15 HP)',
+              cost: hasKey ? '1 Llave 🔑' : 'Forzar (-15 HP ❤️)',
+              costColor: hasKey ? '#facc15' : '#ef4444',
+              interact: (p, r) => {
+                if (p.keys > 0) {
+                  p.useKey();
+                  targetRoom.isLocked = false;
+                  soundManager.playProcedural('door_unlock');
+                  if (p.ui) {
+                    p.ui.showToast(`¡${roomName.toUpperCase()} DESBLOQUEADA CON LLAVE! [🔑 -1]`);
+                    p.ui.spawnFloatingText('🔓 PUERTA ABIERTA', '#38bdf8', dPos.x, dPos.y);
+                  }
+                } else {
+                  p.takeDamage(15, r, { isProjectile: false, ignoreInvulnerability: true, isSacrifice: true });
+                  targetRoom.isLocked = false;
+                  soundManager.playProcedural('break_rock');
+                  soundManager.playProcedural('door_unlock');
+                  if (window.activeGameInstance) {
+                    window.activeGameInstance.triggerScreenShake(6.0, 0.2);
+                  }
+                  if (p.ui) {
+                    p.ui.showToast('🩸 ¡PUERTA FORZADA CON SANGRE! (-15 HP)');
+                    p.ui.spawnFloatingText('💥 PUERTA FORZADA (-15 HP)', '#ef4444', dPos.x, dPos.y);
+                    p.ui.updateHealth(p);
+                  }
+                }
+              }
+            };
+          }
+        }
+      }
+    }
+
     return closest;
   }
 
@@ -9320,57 +9396,107 @@ class Room {
     const dw = CONFIG.DOOR_WIDTH;
     const wt = CONFIG.WALL_THICKNESS;
     const b = this.bounds;
+    const activeFloor = window.activeGameInstance?.currentFloor;
 
-    const doorFill = this.cleared ? '#0f172a' : '#450a0a';
-    const frameColor = this.cleared ? '#38bdf8' : '#ef4444';
+    const isDoorLocked = (dx, dy) => {
+      if (!this.cleared || !activeFloor) return false;
+      const target = activeFloor.getRoom(this.gridX + dx, this.gridY + dy);
+      return Boolean(target && target.isLocked);
+    };
+
+    const drawLockIcon = (lx, ly) => {
+      // Candado geométrico dorado sin texto (estricto cumplimiento: 0 fillText)
+      ctx.save();
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(lx, ly - 4, 4.5, Math.PI, 0, false);
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(lx - 5, ly - 2, 10, 8);
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx - 5, ly - 2, 10, 8);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(lx, ly + 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
 
     ctx.save();
     if (this.doors.N) {
       const dPos = this.getDoorPosition('N');
+      const locked = isDoorLocked(0, -1);
+      const frameColor = locked ? '#f59e0b' : (this.cleared ? '#38bdf8' : '#ef4444');
+      const doorFill = locked ? '#1c1917' : (this.cleared ? '#0f172a' : '#450a0a');
+
       ctx.fillStyle = doorFill;
       ctx.fillRect(dPos.x - dw / 2, b.top - wt, dw, wt + 4);
       ctx.strokeStyle = frameColor;
       ctx.lineWidth = 3;
       ctx.strokeRect(dPos.x - dw / 2, b.top - wt + 2, dw, wt - 2);
-      if (this.cleared) {
+      if (this.cleared && !locked) {
         ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
         ctx.fillRect(dPos.x - dw / 2 + 4, b.top - wt + 4, dw - 8, wt - 4);
+      } else if (locked) {
+        drawLockIcon(dPos.x, b.top - wt / 2 + 1);
       }
     }
     if (this.doors.S) {
       const dPos = this.getDoorPosition('S');
+      const locked = isDoorLocked(0, 1);
+      const frameColor = locked ? '#f59e0b' : (this.cleared ? '#38bdf8' : '#ef4444');
+      const doorFill = locked ? '#1c1917' : (this.cleared ? '#0f172a' : '#450a0a');
+
       ctx.fillStyle = doorFill;
       ctx.fillRect(dPos.x - dw / 2, b.bottom - 4, dw, wt + 4);
       ctx.strokeStyle = frameColor;
       ctx.lineWidth = 3;
       ctx.strokeRect(dPos.x - dw / 2, b.bottom, dw, wt - 2);
-      if (this.cleared) {
+      if (this.cleared && !locked) {
         ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
         ctx.fillRect(dPos.x - dw / 2 + 4, b.bottom + 2, dw - 8, wt - 4);
+      } else if (locked) {
+        drawLockIcon(dPos.x, b.bottom + wt / 2 - 1);
       }
     }
     if (this.doors.W) {
       const dPos = this.getDoorPosition('W');
+      const locked = isDoorLocked(-1, 0);
+      const frameColor = locked ? '#f59e0b' : (this.cleared ? '#38bdf8' : '#ef4444');
+      const doorFill = locked ? '#1c1917' : (this.cleared ? '#0f172a' : '#450a0a');
+
       ctx.fillStyle = doorFill;
       ctx.fillRect(b.left - wt, dPos.y - dw / 2, wt + 4, dw);
       ctx.strokeStyle = frameColor;
       ctx.lineWidth = 3;
       ctx.strokeRect(b.left - wt + 2, dPos.y - dw / 2, wt - 2, dw);
-      if (this.cleared) {
+      if (this.cleared && !locked) {
         ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
         ctx.fillRect(b.left - wt + 4, dPos.y - dw / 2 + 4, wt - 4, dw - 8);
+      } else if (locked) {
+        drawLockIcon(b.left - wt / 2 + 1, dPos.y);
       }
     }
     if (this.doors.E) {
       const dPos = this.getDoorPosition('E');
+      const locked = isDoorLocked(1, 0);
+      const frameColor = locked ? '#f59e0b' : (this.cleared ? '#38bdf8' : '#ef4444');
+      const doorFill = locked ? '#1c1917' : (this.cleared ? '#0f172a' : '#450a0a');
+
       ctx.fillStyle = doorFill;
       ctx.fillRect(b.right - 4, dPos.y - dw / 2, wt + 4, dw);
       ctx.strokeStyle = frameColor;
       ctx.lineWidth = 3;
       ctx.strokeRect(b.right, dPos.y - dw / 2, wt - 2, dw);
-      if (this.cleared) {
+      if (this.cleared && !locked) {
         ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
         ctx.fillRect(b.right + 2, dPos.y - dw / 2 + 4, wt - 4, dw - 8);
+      } else if (locked) {
+        drawLockIcon(b.right + wt / 2 - 1, dPos.y);
       }
     }
     ctx.restore();
@@ -11562,28 +11688,27 @@ class Game {
 
     this.currentRoom.projectiles = [];
     this.currentRoom.enemyProjectiles = [];
-    if (targetRoom.type === 'SHOP' && targetRoom.isLocked) {
+    if (targetRoom.isLocked) {
+      const roomName = targetRoom.type === 'SHOP' ? 'TIENDA' : (targetRoom.type === 'TREASURE' ? 'SALA DEL TESORO' : 'SALA BLOQUEADA');
       if (this.player.keys > 0) {
         this.player.useKey();
         targetRoom.isLocked = false;
         soundManager.playProcedural('door_unlock');
-        this.ui.showToast('¡TIENDA DESBLOQUEADA CON LLAVE! [🔑 -1]');
+        this.ui.showToast(`¡${roomName} DESBLOQUEADA CON LLAVE! [🔑 -1]`);
       } else {
-        soundManager.playProcedural('hurt');
-        this.ui.showToast('PUERTA CERRADA: Necesitas 1 Llave [🔑] para entrar a la Tienda');
-        return;
-      }
-    }
+        // Empuje defensivo hacia el interior de la sala actual para prevenir bucles de 60fps y solapamiento
+        const b = this.currentRoom.bounds;
+        const pushPadding = this.player.radius + 14;
+        if (directionKey === 'N') this.player.y = b.top + pushPadding;
+        else if (directionKey === 'S') this.player.y = b.bottom - pushPadding;
+        else if (directionKey === 'W') this.player.x = b.left + pushPadding;
+        else if (directionKey === 'E') this.player.x = b.right - pushPadding;
 
-    if (targetRoom.type === 'TREASURE' && targetRoom.isLocked) {
-      if (this.player.keys > 0) {
-        this.player.useKey();
-        targetRoom.isLocked = false;
-        soundManager.playProcedural('door_unlock');
-        this.ui.showToast('¡SALA DEL TESORO DESBLOQUEADA CON LLAVE! [🔑 -1]');
-      } else {
-        soundManager.playProcedural('hurt');
-        this.ui.showToast('PUERTA CERRADA: Necesitas 1 Llave [🔑] para entrar a la Sala del Tesoro');
+        if (!this.lastDoorWarnTimer || Date.now() - this.lastDoorWarnTimer > 1800) {
+          this.lastDoorWarnTimer = Date.now();
+          soundManager.playProcedural('hurt');
+          this.ui.showToast('🔒 PUERTA CERRADA: Usa [E] para abrir con 1 Llave o forzar con sangre (-15 HP)');
+        }
         return;
       }
     }
@@ -11785,7 +11910,7 @@ class Game {
       if (window.devConsole) window.devConsole.log('ERROR', 'Error en Room.update: ' + err.message);
     }
 
-    const triggeredDoor = this.currentRoom.resolvePlayerBoundsAndDoors(this.player);
+    const triggeredDoor = this.currentRoom.resolvePlayerBoundsAndDoors(this.player, this.currentFloor);
     if (triggeredDoor) {
       this.transitionToRoom(triggeredDoor);
     }
