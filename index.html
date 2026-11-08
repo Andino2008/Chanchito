@@ -1072,6 +1072,17 @@
     }
 
     .sanctuary-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.88);
+      backdrop-filter: blur(14px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 120;
+      opacity: 1;
+      transition: opacity 0.25s ease;
+    }
     .sanctuary-modal-overlay.hidden {
       opacity: 0;
       pointer-events: none;
@@ -2937,24 +2948,6 @@
     </div>
   </div>
 
-<!-- 1. Módulo independiente de Reliquias y Gestor de Hooks -->
-  <script src="relics.js"></script>
-  <!-- 2. Sistema Modular de Combate, Movilidad Visceral y Game Juice (v2.2) -->
-  <script src="combat.js"></script>
-  <!-- 3. Sistema Modular de Evolución Mecánica de Armas (v2.3) -->
-  <script src="evolutions.js"></script>
-  <!-- 4. Sistema Modular de Transmutación y Reciclaje de Reliquias (v2.4) -->
-  <script src="transmutation.js"></script>
-  <!-- 5. Sistema Cinemático de Fases de Jefes (v2.5) -->
-  <script src="boss_phases.js"></script>
-  <!-- 6. Motor de Sinergias Emergentes Game-Breaker (v2.5) -->
-  <script src="synergies.js"></script>
-  <!-- 7. Salas de Desafío y Eventos de Alto Riesgo (v2.5) -->
-  <script src="events.js"></script>
-  <!-- 8. Sistema de Dificultad Adaptativa Modular (BrotherEye) -->
-  <script src="BrotherEye.js"></script>
-  <!-- 8. Motor principal y ejecutor del juego -->
-  <script src="script.js"></script>
 
   <!-- =====================================================================
        SANTUARIO DEL ABISMO: MODAL DE TALENTOS PERMANENTES
@@ -3067,5 +3060,23 @@
     <div class="synergy-banner-desc" id="synergy-banner-desc">Tus proyectiles detonan en meteoros ardientes.</div>
   </div>
 
+  <!-- 1. Módulo independiente de Reliquias y Gestor de Hooks -->
+  <script src="relics.js"></script>
+  <!-- 2. Sistema Modular de Combate, Movilidad Visceral y Game Juice (v2.2) -->
+  <script src="combat.js"></script>
+  <!-- 3. Sistema Modular de Evolución Mecánica de Armas (v2.3) -->
+  <script src="evolutions.js"></script>
+  <!-- 4. Sistema Modular de Transmutación y Reciclaje de Reliquias (v2.4) -->
+  <script src="transmutation.js"></script>
+  <!-- 5. Sistema Cinemático de Fases de Jefes (v2.5) -->
+  <script src="boss_phases.js"></script>
+  <!-- 6. Motor de Sinergias Emergentes Game-Breaker (v2.5) -->
+  <script src="synergies.js"></script>
+  <!-- 7. Salas de Desafío y Eventos de Alto Riesgo (v2.5) -->
+  <script src="events.js"></script>
+  <!-- 8. Sistema de Dificultad Adaptativa Modular (BrotherEye) -->
+  <script src="BrotherEye.js"></script>
+  <!-- 8. Motor principal y ejecutor del juego -->
+  <script src="script.js"></script>
 </body>
 </html>
