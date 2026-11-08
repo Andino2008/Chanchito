@@ -1,0 +1,75 @@
+{
+  "frames": {
+    "Captura de pantalla 2026-10-31 022147": {
+      "frame": {
+        "x": 1,
+        "y": 1,
+        "w": 229,
+        "h": 227
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 229,
+        "h": 227
+      },
+      "sourceSize": {
+        "w": 229,
+        "h": 227
+      }
+    },
+    "Captura de pantalla 2026-10-31 022132": {
+      "frame": {
+        "x": 231,
+        "y": 1,
+        "w": 227,
+        "h": 228
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 227,
+        "h": 228
+      },
+      "sourceSize": {
+        "w": 227,
+        "h": 228
+      }
+    },
+    "Captura de pantalla 2026-10-31 022140": {
+      "frame": {
+        "x": 1,
+        "y": 230,
+        "w": 225,
+        "h": 226
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 225,
+        "h": 226
+      },
+      "sourceSize": {
+        "w": 225,
+        "h": 226
+      }
+    }
+  },
+  "meta": {
+    "app": "Sprite Sheet Maker",
+    "version": "1.0",
+    "image": "spritesheet.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 459,
+      "h": 457
+    },
+    "scale": "1"
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "frames": {
+    "Captura de pantalla 2026-10-31 022431": {
+      "frame": {
+        "x": 1,
+        "y": 1,
+        "w": 230,
+        "h": 227
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 230,
+        "h": 227
+      },
+      "sourceSize": {
+        "w": 230,
+        "h": 227
+      }
+    },
+    "Captura de pantalla 2026-10-31 022438": {
+      "frame": {
+        "x": 255,
+        "y": 1,
+        "w": 227,
+        "h": 225
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 227,
+        "h": 225
+      },
+      "sourceSize": {
+        "w": 227,
+        "h": 225
+      }
+    },
+    "Captura de pantalla 2026-10-31 022304": {
+      "frame": {
+        "x": 485,
+        "y": 1,
+        "w": 227,
+        "h": 199
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 227,
+        "h": 199
+      },
+      "sourceSize": {
+        "w": 227,
+        "h": 199
+      }
+    },
+    "Captura de pantalla 2026-10-31 022310": {
+      "frame": {
+        "x": 1,
+        "y": 229,
+        "w": 253,
+        "h": 227
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 253,
+        "h": 227
+      },
+      "sourceSize": {
+        "w": 253,
+        "h": 227
+      }
+    },
+    "Captura de pantalla 2026-10-31 022339": {
+      "frame": {
+        "x": 255,
+        "y": 229,
+        "w": 225,
+        "h": 223
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 225,
+        "h": 223
+      },
+      "sourceSize": {
+        "w": 225,
+        "h": 223
+      }
+    },
+    "Captura de pantalla 2026-10-31 022352": {
+      "frame": {
+        "x": 485,
+        "y": 229,
+        "w": 227,
+        "h": 229
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 227,
+        "h": 229
+      },
+      "sourceSize": {
+        "w": 227,
+        "h": 229
+      }
+    },
+    "Captura de pantalla 2026-10-31 022404": {
+      "frame": {
+        "x": 1,
+        "y": 459,
+        "w": 228,
+        "h": 229
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 228,
+        "h": 229
+      },
+      "sourceSize": {
+        "w": 228,
+        "h": 229
+      }
+    },
+    "Captura de pantalla 2026-10-31 022411": {
+      "frame": {
+        "x": 255,
+        "y": 459,
+        "w": 229,
+        "h": 228
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 229,
+        "h": 228
+      },
+      "sourceSize": {
+        "w": 229,
+        "h": 228
+      }
+    },
+    "Captura de pantalla 2026-10-31 022421": {
+      "frame": {
+        "x": 485,
+        "y": 459,
+        "w": 228,
+        "h": 228
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 228,
+        "h": 228
+      },
+      "sourceSize": {
+        "w": 228,
+        "h": 228
+      }
+    }
+  },
+  "meta": {
+    "app": "Sprite Sheet Maker",
+    "version": "1.0",
+    "image": "spritesheet.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 714,
+      "h": 689
+    },
+    "scale": "1"
+  }
+}

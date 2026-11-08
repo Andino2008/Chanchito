@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Roguelike 2D MVP - v2.1 // 75 Reliquias, Críticos, Esquiva y Nuevos Hooks</title>
+  <style>
+    :root {
+      --bg-void: #060911;
+      --bg-panel: #0c1322;
+      --bg-card: #111c30;
+      --bg-slot: #090f1d;
+      --border-dim: #1e293b;
+      --border-bright: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-cyan: #38bdf8;
+      --accent-gold: #facc15;
+      --accent-red: #ef4444;
+      --accent-green: #4ade80;
+      --accent-purple: #c084fc;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html,
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-void);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    /* =========================================================================
+       LAYOUT FLOTANTE & ARENA COMPLETA (OVERLAY MINIMALISTA v2.2)
+       ========================================================================= */
+    .app-shell {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-void);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .app-shell.hidden {
+      display: none !important;
+    }
+
+    /* Arena de Combate Centrada (Mantiene aspect-ratio 960x640 exacto) */
+    .canvas-wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      max-width: calc(100vh * (960 / 640));
+      max-height: calc(100vw * (640 / 960));
+      aspect-ratio: 960 / 640;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #090d16;
+      box-shadow: 0 0 60px rgba(0, 0, 0, 0.95);
+      overflow: hidden;
+    }
+
+    canvas#gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      cursor: crosshair;
+    }
+
+    /* Overlay HTML para Game Over / Victoria */
+    .game-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.88);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 100;
+      pointer-events: auto;
+    }
+
+    .game-overlay.hidden {
+      display: none !important;
+    }
+
+    .overlay-title {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(239, 68, 68, 0.7);
+    }
+
+    .overlay-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+    }
+
+    /* Banner Toast Flotante Contextual */
+    .arena-toast-banner {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translate(-50%, -10px);
+      background: rgba(12, 19, 34, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      border-radius: 6px;
+      padding: 7px 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      pointer-events: none;
+      z-index: 60;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
+      opacity: 0;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      white-space: nowrap;
+    }
+
+    .arena-toast-banner.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    /* Monitor de Jefe Contextual (Estilo Bloodborne / Dark Souls) */
+    .boss-souls-panel {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 88%;
+      max-width: 660px;
+      background: rgba(10, 14, 24, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      border-radius: 8px;
+      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.85), 0 0 24px rgba(239, 68, 68, 0.25);
+      z-index: 70;
+      pointer-events: auto;
+      transition: opacity 0.3s ease;
+    }
+
+    .boss-souls-panel.hidden {
+      display: none !important;
+    }
+
+    .boss-souls-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .boss-souls-name {
+      font-size: 1.05rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #f8fafc;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+    }
+
+    .boss-souls-phase {
+      font-size: 0.74rem;
+      font-weight: 800;
+      color: #f87171;
+      letter-spacing: 1px;
+    }
+
+    .boss-hp-track {
+      width: 100%;
+      height: 16px;
+      background: #090f1d;
+      border: 1px solid rgba(239, 68, 68, 0.65);
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .boss-hp-midline {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(250, 204, 21, 0.85);
+      z-index: 3;
+    }
+
+    .boss-hp-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #991b1b 0%, #dc2626 50%, #ef4444 100%);
+      transition: width 0.12s ease-out;
+    }
+
+    .boss-hp-text {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+      z-index: 4;
+    }
+
+    .boss-souls-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+    }
+
+    .boss-fsm-state {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    .boss-armor-state {
+      color: var(--accent-gold);
+      font-weight: 700;
+    }
+
+    /* Capa General de HUD Flotante (pointer-events none para no bloquear el juego) */
+    .hud-floating-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    /* Tarjeta Arriba a la Izquierda: HP y Oro */
+    .hud-card-top-left {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      min-width: 220px;
+      background: rgba(12, 19, 34, 0.78);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+      pointer-events: auto;
+    }
+
+    .shield-badge {
+      font-size: 0.68rem;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+
+    .hp-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.74rem;
+      font-weight: 800;
+    }
+
+    .hp-sub-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .hp-bar-track {
+      width: 100%;
+      height: 14px;
+      background: #090f1d;
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hp-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #dc2626, #ef4444);
+      transition: width 0.16s ease-out, background 0.2s ease;
+    }
+
+    .hp-bar-fill.low-hp {
+      background: linear-gradient(90deg, #ea580c, #facc15);
+    }
+
+    .coin-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(250, 204, 21, 0.08);
+      border: 1px solid rgba(250, 204, 21, 0.35);
+      border-radius: 5px;
+      padding: 5px 8px;
+    }
+
+    .coin-label {
+      color: var(--accent-gold);
+      font-weight: 700;
+      font-size: 0.76rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .coin-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-gold);
+      box-shadow: 0 0 6px var(--accent-gold);
+    }
+
+    .coin-value {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--accent-gold);
+    }
+
+    /* Las reliquias solo se muestran en el menú TAB para mantener el HUD limpio */
+    .collected-relics-strip {
+      display: none !important;
+    }
+
+    /* Tarjeta Arriba a la Derecha: Minimapa y Banner de Nivel */
+    .hud-card-top-right {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .hud-level-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(12, 19, 34, 0.78);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 6px;
+      padding: 5px 10px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+      transition: opacity 1.2s ease-out;
+      opacity: 1;
+    }
+
+    .hud-level-banner.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .version-badge {
+      background: var(--accent-cyan);
+      color: #060911;
+      font-weight: 800;
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .progression-text {
+      font-weight: 700;
+      font-size: 0.76rem;
+      color: var(--text-main);
+    }
+
+    .minimap-wrapper {
+      background: rgba(12, 19, 34, 0.78);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+    }
+
+    .minimap-telemetry-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .room-type-text {
+      font-weight: 800;
+      font-size: 0.74rem;
+      color: var(--text-main);
+    }
+
+    .room-badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .room-badge.cleared {
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(74, 222, 128, 0.35);
+    }
+
+    .room-badge.locked {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-red);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+
+    .minimap-container {
+      width: 180px;
+      height: 95px;
+      background: var(--bg-slot);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .minimap-node {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: #334155;
+      border: 1px solid #475569;
+      transition: transform 0.12s ease;
+    }
+
+    .minimap-node.visited {
+      background: #64748b;
+    }
+
+    .minimap-node.current {
+      background: var(--accent-cyan);
+      border-color: #ffffff;
+      box-shadow: 0 0 8px var(--accent-cyan);
+      z-index: 2;
+      transform: scale(1.18);
+    }
+
+    .minimap-node.shop {
+      border-color: var(--accent-gold);
+      box-shadow: 0 0 6px var(--accent-gold);
+    }
+
+    .minimap-node.boss {
+      border-color: var(--accent-red);
+      box-shadow: 0 0 6px var(--accent-red);
+    }
+
+    .minimap-node.hard {
+      border-color: #f97316;
+    }
+
+    .minimap-node.hazard {
+      border-color: #a855f7;
+    }
+
+    .minimap-node.sanctuary {
+      border-color: #10b981;
+    }
+
+    .minimap-node.nexus {
+      border-color: #c084fc;
+      box-shadow: 0 0 8px #c084fc;
+    }
+
+    .minimap-special-label {
+      font-size: 0.68rem;
+      font-weight: 800;
+      text-align: center;
+      padding: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Dock Inferior Izquierdo: Arma Activa y Cargas de Esquiva (Transparente y minimalista) */
+    .hud-bottom-dock {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+      z-index: 55;
+      background: rgba(8, 14, 26, 0.4);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      border-radius: 8px;
+      padding: 6px 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    }
+
+    .hud-dodge-card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: none;
+    }
+
+    .hud-dodge-label {
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .hud-dodge-pips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dodge-pip {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-bright);
+      transition: all 0.2s ease;
+    }
+
+    .dodge-pip.ready {
+      background: var(--accent-cyan);
+      border-color: #7dd3fc;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.75);
+    }
+
+    .dodge-pip.recharging {
+      background: rgba(148, 163, 184, 0.12);
+      border-color: rgba(148, 163, 184, 0.3);
+      animation: pulseRecharge 1s infinite alternate;
+    }
+
+    @keyframes pulseRecharge {
+      0% { opacity: 0.35; transform: scale(0.92); }
+      100% { opacity: 0.9; transform: scale(1.05); }
+    }
+
+    .hud-weapon-card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: none;
+    }
+
+    .hud-weapon-symbol {
+      font-size: 1.25rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: rgba(9, 15, 29, 0.45);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 5px;
+    }
+
+    .hud-weapon-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .hud-weapon-label {
+      display: none;
+    }
+
+    .hud-weapon-name {
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--accent-cyan);
+      white-space: nowrap;
+    }
+
+    .hud-element-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 7px;
+      background: rgba(17, 28, 48, 0.65);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .hud-element-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    /* =========================================================================
+       OVERLAY TRANSLÚCIDO AL MANTENER TAB (STATS Y RELIQUIAS)
+       ========================================================================= */
+    .tab-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.82);
+      backdrop-filter: blur(12px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: hidden;
+      overflow-x: hidden;
+    }
+
+    .tab-overlay.hidden {
+      display: none !important;
+    }
+
+    .tab-modal {
+      width: 900px;
+      max-width: 95vw;
+      max-height: 88vh;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-bright);
+      border-radius: 10px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      overflow-x: hidden; /* Cero scroll horizontal global en la base del modal */
+    }
+
+    .tab-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.14), rgba(17, 28, 48, 0.9));
+      border-bottom: 1px solid var(--border-bright);
+      flex-shrink: 0;
+    }
+
+    .tab-title {
+      font-size: 0.92rem;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tab-hint {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .tab-content-grid {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px 20px;
+      overflow: hidden;
+      overflow-x: hidden; /* Eliminación estricta de desbordamiento horizontal */
+      min-height: 0;
+      flex: 1;
+    }
+
+    .tab-column {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .tab-stats-col {
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 6px;
+      scrollbar-width: thin;
+    }
+
+    /* Panel derecho con su propio scroll interno y vertical independiente */
+    .tab-relics-col {
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 8px;
+      scrollbar-width: thin;
+      max-height: calc(88vh - 80px);
+    }
+
+    .tab-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--accent-cyan);
+      border-bottom: 1px solid var(--border-dim);
+      padding-bottom: 5px;
+      flex-shrink: 0;
+    }
+
+    .stat-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.76rem;
+      padding: 3px 0;
+      border-bottom: 1px dashed rgba(51, 65, 85, 0.45);
+    }
+
+    .stat-item:last-child {
+      border-bottom: none;
+    }
+
+    .stat-label {
+      color: var(--text-muted);
+    }
+
+    .stat-val {
+      color: var(--text-main);
+      font-weight: 700;
+    }
+
+    .element-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .element-empty {
+      color: var(--text-dim);
+      font-size: 0.76rem;
+      font-style: italic;
+      padding: 4px 0;
+    }
+
+    .element-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-slot);
+      border-left: 3px solid var(--accent-cyan);
+      border-radius: 0 4px 4px 0;
+      padding: 5px 8px;
+      font-size: 0.74rem;
+    }
+
+    .element-name {
+      font-weight: 700;
+    }
+
+    .element-badge {
+      font-size: 0.68rem;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    /* Cuadrícula de 75 reliquias responsiva a columnas */
+    .relic-grid {
+      display: grid;
+      grid-template-columns: repeat(15, minmax(0, 1fr));
+      gap: 4px;
+      padding: 6px;
+      background: var(--bg-slot);
+      border: 1px solid var(--border-dim);
+      border-radius: 6px;
+      overflow: visible;
+      flex-shrink: 0;
+    }
+
+    .relic-slot {
+      aspect-ratio: 1;
+      border: 1px solid rgba(51, 65, 85, 0.5);
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(9, 15, 29, 0.6);
+      position: relative;
+      transition: all 0.12s ease;
+      cursor: default;
+      min-width: 0;
+    }
+
+    .relic-slot.owned {
+      background: rgba(17, 28, 48, 0.95);
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    }
+
+    .relic-slot.owned:hover {
+      transform: scale(1.15);
+      z-index: 5;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+    }
+
+    .relic-slot-idx {
+      font-size: 0.52rem;
+      color: var(--text-dim);
+      line-height: 1;
+      margin-bottom: 1px;
+    }
+
+    .relic-slot-code {
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: var(--text-dim);
+      line-height: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .relic-slot-stack {
+      position: absolute;
+      bottom: 1px;
+      right: 2px;
+      font-size: 0.52rem;
+      font-weight: 900;
+      color: #facc15;
+      display: none;
+    }
+
+    .relic-slot-stack.visible {
+      display: block;
+    }
+
+    /* Inspector con ajuste de línea garantizado sin desbordamiento */
+    .relic-inspector {
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-height: 64px;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      white-space: normal;
+      flex-shrink: 0;
+    }
+
+    .relic-inspector-title {
+      font-weight: 800;
+      font-size: 0.78rem;
+      color: var(--accent-cyan);
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      white-space: normal;
+    }
+
+    .relic-inspector-desc {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      white-space: normal;
+    }
+
+    /* =========================================================================
+       MENÚ DE PAUSA (TECLA ESC)
+       ========================================================================= */
+    .pause-menu-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.88);
+      backdrop-filter: blur(14px);
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .pause-menu-overlay.hidden {
+      display: none !important;
+    }
+
+    .pause-box {
+      width: 500px;
+      max-width: 95vw;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-bright);
+      border-radius: 10px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .pause-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border-bright);
+      padding-bottom: 10px;
+    }
+
+    .pause-icon {
+      font-size: 1.3rem;
+    }
+
+    .pause-title {
+      font-size: 1.05rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: var(--accent-cyan);
+    }
+
+    .pause-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent-cyan);
+      border-bottom: 1px solid var(--border-dim);
+      padding-bottom: 4px;
+    }
+
+    .music-track-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+
+    .music-track-name {
+      font-weight: 700;
+      color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .music-vol-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.72rem;
+    }
+
+    .music-vol-label {
+      width: 56px;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .music-volume-slider {
+      flex: 1;
+      accent-color: var(--accent-cyan);
+      cursor: pointer;
+    }
+
+    .music-volume-slider.sfx-slider {
+      accent-color: var(--accent-gold);
+    }
+
+    .music-volume-val {
+      width: 34px;
+      text-align: right;
+      color: var(--accent-cyan);
+      font-weight: 800;
+      font-size: 0.72rem;
+    }
+
+    .music-toggle-btn {
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+
+    .music-toggle-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+      color: #fff;
+    }
+
+    .pause-controls-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 5px;
+    }
+
+    .pause-control-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.76rem;
+      padding: 3px 0;
+      border-bottom: 1px dashed rgba(51, 65, 85, 0.4);
+    }
+
+    .pause-control-row:last-child {
+      border-bottom: none;
+    }
+
+    .control-key {
+      color: var(--accent-cyan);
+      font-weight: 800;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      font-size: 0.72rem;
+    }
+
+    .control-action {
+      color: var(--text-muted);
+    }
+
+    .pause-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn-pause-action {
+      flex: 1;
+      padding: 11px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-align: center;
+    }
+
+    .btn-resume {
+      background: var(--accent-cyan);
+      color: #060911;
+      border: 1px solid #7dd3fc;
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+    }
+
+    .btn-resume:hover {
+      background: #7dd3fc;
+      transform: translateY(-1px);
+    }
+
+    .btn-restart {
+      background: transparent;
+      color: var(--accent-red);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+    }
+
+    .btn-restart:hover {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: var(--accent-red);
+    }
+
+    /* Floating text animations container */
+    .floating-text-container {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 40;
+    }
+
+    .dom-floating-text {
+      position: absolute;
+      font-family: var(--font-mono);
+      font-weight: 900;
+      font-size: 0.95rem;
+      text-shadow: 0 0 4px #000, 0 0 10px rgba(0, 0, 0, 0.85);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      animation: floatDamageNumber 1.6s ease-out forwards;
+      white-space: nowrap;
+      z-index: 50;
+    }
+
+    @keyframes floatDamageNumber {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, 0) scale(0.6);
+      }
+      15% {
+        opacity: 1;
+        transform: translate(-50%, -10px) scale(1.08);
+      }
+      75% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -46px) scale(0.95);
+      }
+    }
+
+    /* =========================================================================
+       CINEMÁTICA INICIAL (OVERLAY DOM v2.1)
+       ========================================================================= */
+    .cinematic-overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .cinematic-overlay.hidden {
+      display: none !important;
+    }
+
+    .cinematic-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      outline: none;
+    }
+
+    .cinematic-skip-hud {
+      position: absolute;
+      bottom: 28px;
+      right: 32px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(10, 15, 29, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      padding: 9px 18px;
+      border-radius: 8px;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+      transition: all 0.18s ease;
+      z-index: 2010;
+      font-family: var(--font-mono);
+    }
+
+    .cinematic-skip-hud:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: var(--accent-cyan);
+      transform: scale(1.04);
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
+    }
+
+    .cinematic-key-pill {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #38bdf8;
+      font-size: 0.76rem;
+      font-weight: 900;
+      padding: 3px 8px;
+      border-radius: 4px;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+    }
+
+    .cinematic-skip-text {
+      color: #f1f5f9;
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .cinematic-prompt-start {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 2020;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .cinematic-prompt-start.hidden {
+      display: none !important;
+    }
+
+    .cinematic-prompt-box {
+      border: 2px solid #38bdf8;
+      background: rgba(15, 23, 42, 0.95);
+      padding: 24px 36px;
+      border-radius: 12px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 0 40px rgba(56, 189, 248, 0.45);
+      animation: pulseCinematicPrompt 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseCinematicPrompt {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 30px rgba(56, 189, 248, 0.35); }
+      50% { transform: scale(1.02); box-shadow: 0 0 50px rgba(56, 189, 248, 0.65); }
+    }
+
+    /* =========================================================================
+       MENÚ PRINCIPAL Y SELECTOR DE MODOS (DOM OVERLAY v2.1)
+       ========================================================================= */
+    .main-menu-overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: #030712;
+      background-image: linear-gradient(180deg, rgba(2, 6, 23, 0.12) 0%, rgba(2, 6, 23, 0.55) 68%, rgba(2, 6, 23, 0.88) 100%),
+                        url('cinematica/foto%20del%20inicio%20del%20juego.jpg');
+      background-size: cover;
+      background-position: center top;
+      background-repeat: no-repeat;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      z-index: 1000;
+      padding: 24px 20px 42px 20px;
+      box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.9);
+    }
+
+    .main-menu-overlay.hidden {
+      display: none !important;
+    }
+
+    .menu-version-badge {
+      position: absolute;
+      top: 18px;
+      left: 24px;
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      color: var(--accent-cyan);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 14px rgba(0, 0, 0, 0.7);
+    }
+
+    .menu-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      max-width: 540px;
+      width: 100%;
+      text-align: center;
+      z-index: 10;
+    }
+
+    /* Botón Gigante JUGAR */
+    .btn-giant-play {
+      font-family: var(--font-mono);
+      font-size: 1.85rem;
+      font-weight: 900;
+      letter-spacing: 5px;
+      color: #060911;
+      background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+      border: 2px solid #7dd3fc;
+      border-radius: 8px;
+      padding: 14px 74px;
+      cursor: pointer;
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      text-shadow: 0 1px 2px rgba(255, 255, 255, 0.4);
+    }
+
+    .btn-giant-play:hover {
+      transform: scale(1.06);
+      background: linear-gradient(135deg, #7dd3fc 0%, #38bdf8 100%);
+      box-shadow: 0 0 52px rgba(56, 189, 248, 0.95);
+      border-color: #bae6fd;
+    }
+
+    .btn-giant-play:active {
+      transform: scale(0.98);
+    }
+
+    /* Contenedor de Selección de Modos */
+    .menu-mode-selection {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      width: 100%;
+      max-width: 520px;
+      animation: fadeInMenu 0.22s ease-out;
+    }
+
+    .menu-mode-selection.hidden {
+      display: none !important;
+    }
+
+    @keyframes fadeInMenu {
+      from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .menu-mode-btn {
+      font-family: var(--font-mono);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 14px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.16s ease;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+    }
+
+    .menu-mode-btn .mode-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .menu-mode-btn .mode-desc {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .btn-normal {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: linear-gradient(135deg, rgba(17, 28, 48, 0.9), rgba(12, 19, 34, 0.9));
+    }
+
+    .btn-normal .mode-title {
+      color: var(--accent-cyan);
+    }
+
+    .btn-normal:hover {
+      border-color: var(--accent-cyan);
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(17, 28, 48, 0.95));
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(56, 189, 248, 0.25);
+    }
+
+    /* Contenedor Mortal Mode (Botón + Stepper) */
+    .mortal-mode-container {
+      display: flex;
+      align-items: stretch;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .btn-mortal {
+      flex: 1;
+      border-color: rgba(239, 68, 68, 0.6);
+      background: linear-gradient(135deg, rgba(69, 10, 10, 0.6), rgba(26, 8, 8, 0.85));
+    }
+
+    .btn-mortal .mode-title {
+      color: #f87171;
+    }
+
+    .btn-mortal:hover {
+      border-color: var(--accent-red);
+      background: linear-gradient(135deg, rgba(220, 38, 38, 0.35), rgba(69, 10, 10, 0.85));
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+    }
+
+    .mortal-level-control {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: var(--bg-card);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      border-radius: 6px;
+      padding: 6px 12px;
+      min-width: 108px;
+    }
+
+    .mortal-control-label {
+      font-size: 0.64rem;
+      font-weight: 800;
+      color: #fca5a5;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .stepper-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .stepper-btn {
+      width: 26px;
+      height: 26px;
+      background: #1e293b;
+      border: 1px solid #475569;
+      color: #f8fafc;
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      font-weight: 800;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.12s ease;
+    }
+
+    .stepper-btn:hover {
+      background: #dc2626;
+      border-color: #ef4444;
+      color: #ffffff;
+    }
+
+    .stepper-btn:active {
+      transform: scale(0.92);
+    }
+
+    .stepper-value {
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: var(--accent-gold);
+      min-width: 24px;
+      text-align: center;
+      text-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+    }
+
+    /* =========================================================================
+       PANEL Y CONTROLES DE MÚSICA Y SFX INDEPENDIENTES (v2.1)
+       ========================================================================= */
+    .menu-audio-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 480px;
+      background: rgba(10, 15, 29, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 8px;
+      padding: 10px 18px;
+      margin-top: 4px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+    }
+
+    .menu-audio-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .menu-audio-row .audio-label {
+      font-weight: 800;
+      color: #94a3b8;
+      min-width: 130px;
+      text-align: left;
+      font-size: 0.72rem;
+      letter-spacing: 0.5px;
+    }
+
+    .sfx-slider {
+      accent-color: #f59e0b !important;
+    }
+
+    .music-panel {
+      border-color: rgba(56, 189, 248, 0.3);
+      padding: 8px 10px;
+      gap: 6px;
+    }
+
+    .music-toggle-btn {
+      background: transparent;
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      padding: 2px 7px;
+      color: var(--accent-green);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+
+    .music-toggle-btn:hover {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: var(--accent-cyan);
+    }
+
+    .music-track-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-slot);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      padding: 5px 8px;
+      overflow: hidden;
+    }
+
+    .music-icon {
+      font-size: 0.85rem;
+      color: var(--accent-gold);
+    }
+
+    .music-track-name {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.4px;
+    }
+
+    .music-vol-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.72rem;
+    }
+
+    .music-vol-label {
+      color: var(--text-dim);
+      font-weight: 800;
+    }
+
+    .music-volume-slider {
+      flex: 1;
+      height: 4px;
+      background: var(--border-dim);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      accent-color: var(--accent-cyan);
+    }
+
+    .music-volume-val {
+      color: var(--accent-gold);
+      font-weight: 800;
+      min-width: 32px;
+      text-align: right;
+      font-size: 0.72rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- =====================================================================
+       -1. CINEMÁTICA DE INTRODUCCIÓN (OVERLAY DOM v2.1)
+       ===================================================================== -->
+  <div id="cinematic-overlay" class="cinematic-overlay">
+    <video id="cinematic-video" class="cinematic-video" playsinline preload="auto">
+      <source src="cinematica/cinematica.mp4" type="video/mp4">
+      Tu navegador no soporta reproducción de video HTML5.
+    </video>
+
+    <!-- Botón / Indicador para saltar cinemática con ENTER o Clic -->
+    <button id="cinematic-skip-btn" class="cinematic-skip-hud" type="button" title="Saltar cinemática (Enter)">
+      <span class="cinematic-key-pill">[ENTER]</span>
+      <span class="cinematic-skip-text">Saltar cinemática</span>
+    </button>
+
+    <!-- Overlay de desbloqueo de interacción si el navegador bloquea autoplay sin gesto -->
+    <div id="cinematic-prompt" class="cinematic-prompt-start hidden">
+      <div class="cinematic-prompt-box">
+        <div class="menu-badge">EXPEDICIÓN ABISAL</div>
+        <div style="font-size: 1.25rem; font-weight: 900; color: #ffffff; letter-spacing: 2px;">
+          HAZ CLIC O PRESIONA [ENTER] PARA COMENZAR
+        </div>
+        <div style="font-size: 0.8rem; color: var(--accent-cyan); letter-spacing: 1px;">
+          (Enter salta la cinemática directamente al menú principal)
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       0. MENÚ PRINCIPAL Y SELECTOR DE MODOS (DOM OVERLAY v2.1)
+       ===================================================================== -->
+  <div id="main-menu" class="main-menu-overlay">
+    <div class="menu-version-badge">v2.1</div>
+
+    <div class="menu-content">
+      <!-- Botón Gigante JUGAR -->
+      <button id="btn-menu-play" class="btn-giant-play" type="button">JUGAR</button>
+
+      <!-- Selector de Modos (Se muestra al hacer clic en JUGAR) -->
+      <div id="menu-mode-selection" class="menu-mode-selection hidden">
+        <!-- Modo 1: Partida Normal -->
+        <button id="btn-mode-normal" class="menu-mode-btn btn-normal" type="button">
+          <span class="mode-title">EMPEZAR PARTIDA NORMAL</span>
+          <span class="mode-desc">NG+ 0 &bull; Dificultad Estándar &bull; Progreso Progresivo</span>
+        </button>
+
+        <!-- Modo 2: Partida Mortal con selector de NG+ -->
+        <div class="mortal-mode-container">
+          <button id="btn-mode-mortal" class="menu-mode-btn btn-mortal" type="button">
+            <span class="mode-title">EMPEZAR PARTIDA MORTAL</span>
+            <span class="mode-desc">Stats Enemigos x(4 &times; NG+) &bull; Doble Drop en Cofres</span>
+          </button>
+          <div class="mortal-level-control">
+            <span class="mortal-control-label">NIVEL NG+</span>
+            <div class="stepper-controls">
+              <button id="btn-mortal-minus" class="stepper-btn" type="button" aria-label="Reducir NG+">-</button>
+              <span id="mortal-ng-display" class="stepper-value">1</span>
+              <button id="btn-mortal-plus" class="stepper-btn" type="button" aria-label="Aumentar NG+">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controles de Audio Independientes en Menú -->
+      <div class="menu-audio-container">
+        <div class="menu-audio-row">
+          <span class="audio-label">🎵 MÚSICA:</span>
+          <input type="range" id="menu-volume-slider" class="music-volume-slider" min="0" max="1" step="0.05" value="0.25" />
+          <span id="menu-volume-val" class="music-volume-val">25%</span>
+        </div>
+        <div class="menu-audio-row">
+          <span class="audio-label">💥 EFECTOS (SFX):</span>
+          <input type="range" id="menu-sfx-slider" class="music-volume-slider sfx-slider" min="0" max="1" step="0.05" value="0.50" />
+          <span id="menu-sfx-val" class="music-volume-val">50%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <div class="app-shell hidden" id="app-shell">
+    <!-- 1. ARENA DE COMBATE EXPANDIDA (Centrada y escalada a pantalla completa) -->
+    <div class="canvas-wrapper">
+      <canvas id="gameCanvas" width="960" height="640"></canvas>
+      <div id="floating-text-container" class="floating-text-container"></div>
+      <div class="game-overlay hidden" id="game-overlay">
+        <div class="overlay-title" id="overlay-title">HAS CAÍDO EN LA MAZMORRA</div>
+        <div class="overlay-subtitle" id="overlay-subtitle">Presiona la tecla [R] para reiniciar la incursión</div>
+      </div>
+    </div>
+
+    <!-- Banner Toast Flotante Contextual -->
+    <div class="arena-toast-banner" id="arena-toast"></div>
+
+    <!-- 2. MONITOR DE JEFE CONTEXTUAL (Estilo Bloodborne / Dark Souls) -->
+    <div class="boss-souls-panel hidden" id="boss-panel">
+      <div class="boss-souls-header">
+        <span class="boss-souls-name" id="boss-name">GOLIAT, EL ÚLTIMO BASTIÓN</span>
+        <span class="boss-souls-phase" id="boss-phase-badge">FASE 1</span>
+      </div>
+      <div class="boss-hp-track">
+        <div class="boss-hp-midline" title="Umbral Fase 2 (50% HP)"></div>
+        <div class="boss-hp-fill" id="boss-hp-fill"></div>
+        <span class="boss-hp-text" id="boss-hp-text">-- / --</span>
+      </div>
+      <div class="boss-souls-footer">
+        <span class="boss-fsm-state" id="boss-fsm-state">Inactivo</span>
+        <span class="boss-armor-state" id="boss-armor-state">Escudo Frontal (-80%)</span>
+      </div>
+    </div>
+
+    <!-- 3. HUD PRINCIPAL FLOTANTE Y MINIMALISTA -->
+    <div class="hud-floating-layer">
+      <!-- Arriba a la Izquierda: HP (Integridad Vital) y Contador de Oro -->
+      <div class="hud-card-top-left" id="hud-top-left">
+        <div class="hp-header-row">
+          <span style="color: var(--accent-cyan); letter-spacing: 0.8px;">INTEGRIDAD VITAL</span>
+          <span id="ui-shield-badge" class="shield-badge">ESTABLE</span>
+        </div>
+        <div class="hp-sub-row">
+          <span style="color: var(--text-muted); font-size: 0.72rem;">HP JUGADOR</span>
+          <span id="ui-hp-text" style="font-weight: 800; font-size: 0.8rem;">100 / 100</span>
+        </div>
+        <div class="hp-bar-track">
+          <div class="hp-bar-fill" id="ui-hp-fill"></div>
+        </div>
+        <div class="coin-row">
+          <span class="coin-label"><span class="coin-dot"></span>ORO</span>
+          <span class="coin-value" id="coin-count">0</span>
+        </div>
+      </div>
+
+      <!-- Strip de reliquias oculto del HUD principal: se consulta en el menú [TAB] -->
+      <div class="collected-relics-strip" id="collected-relics-strip" style="display: none !important;"></div>
+
+      <!-- Arriba a la Derecha: Minimapa y Banner de Nivel / Versión Fading -->
+      <div class="hud-card-top-right" id="hud-top-right">
+        <!-- Texto discreto con fade-out automático de versión, Nivel y NG+ -->
+        <div class="hud-level-banner" id="hud-level-banner">
+          <span class="version-badge" id="ui-version">v2.1</span>
+          <span class="progression-text" id="ui-progression">NG+ 0 | Sección: 1 - Nivel: 1</span>
+        </div>
+
+        <!-- Minimapa Minimalista DOM -->
+        <div class="minimap-wrapper">
+          <div class="minimap-telemetry-row">
+            <span id="room-type-label" class="room-type-text">SALA INICIAL</span>
+            <span class="room-badge cleared" id="room-lock-badge">PUERTAS ABIERTAS</span>
+            <span id="room-coords" style="display:none;">SALA (0, 0)</span>
+            <span id="room-enemies-count" style="display:none;">0</span>
+            <span id="room-objective" style="display:none;">Explorar piso</span>
+          </div>
+          <div class="minimap-container" id="dom-minimap"></div>
+        </div>
+      </div>
+
+      <!-- Abajo a la Izquierda: Arma Activa, Cargas de Esquiva y Afinidad Pegada (Transparente) -->
+      <div class="hud-bottom-dock" id="hud-bottom">
+        <!-- Indicador de Cargas de Esquiva (Dash) -->
+        <div class="hud-dodge-card">
+          <span class="hud-dodge-label">ESQUIVA [SHIFT]</span>
+          <div class="hud-dodge-pips" id="hud-dodge-pips">
+            <div class="dodge-pip ready" title="Carga 1 lista"></div>
+            <div class="dodge-pip ready" title="Carga 2 lista"></div>
+          </div>
+        </div>
+
+        <div style="width: 1px; height: 18px; background: rgba(56, 189, 248, 0.25);"></div>
+
+        <!-- Tarjeta de Arma Activa con Afinidad Pegada -->
+        <div class="hud-weapon-card" id="hud-weapon-card">
+          <div class="hud-weapon-symbol" id="hud-weapon-symbol">🏹</div>
+          <div class="hud-weapon-info">
+            <span class="hud-weapon-name" id="stat-weapon-name">Proyectiles</span>
+          </div>
+          <!-- Afinidad Elemental pegada -->
+          <div class="hud-element-badge" id="hud-element-badge" title="Afinidad Elemental Activa">
+            <span class="hud-element-dot" id="hud-element-dot"></span>
+            <span class="hud-element-text" id="hud-element-text">Sin Afinidad</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       4. HUD DINÁMICO (OVERLAY TRANSLÚCIDO AL MANTENER TAB)
+       ===================================================================== -->
+  <div class="tab-overlay hidden" id="tab-overlay">
+    <div class="tab-modal">
+      <div class="tab-header">
+        <div class="tab-title">
+          <span>📊</span>
+          <span>REGISTRO TÁCTICO & ARCHIVO DE RELIQUIAS</span>
+        </div>
+        <div class="tab-hint">MANTÉN [TAB] PRESIONADO &bull; SUELTA PARA CERRAR</div>
+      </div>
+      
+      <div class="tab-content-grid">
+        <!-- Columna Izquierda: Estadísticas de Combate & Afinidades -->
+        <div class="tab-column tab-stats-col">
+          <div class="tab-section-header">
+            <span>ESTADÍSTICAS DE COMBATE</span>
+            <span style="color: var(--accent-cyan);">TIEMPO REAL</span>
+          </div>
+          <ul class="stat-list">
+            <li class="stat-item">
+              <span class="stat-label">Multiplicador Daño</span>
+              <span class="stat-val" id="stat-damage">x1.00</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Velocidad de Ataque</span>
+              <span class="stat-val" id="stat-atk-speed">x1.00</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Proyectiles Extra</span>
+              <span class="stat-val" id="stat-extra-proj">+0</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Probabilidad Crítico</span>
+              <span class="stat-val" id="stat-crit">5% (x2.0)</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Velocidad Movimiento</span>
+              <span class="stat-val" id="stat-move-speed">270</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Cargas Esquiva [SHIFT]</span>
+              <span class="stat-val" id="stat-dodge">2 / 2</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Placas de Defensa</span>
+              <span class="stat-val" id="stat-defense">0 (0%)</span>
+            </li>
+            <li class="stat-item">
+              <span class="stat-label">Radio Imán / Drops</span>
+              <span class="stat-val" id="stat-magnet">x1.00</span>
+            </li>
+          </ul>
+
+          <div class="tab-section-header" style="margin-top: 14px;">
+            <span>AFINIDADES ELEMENTALES</span>
+            <span style="color: var(--accent-gold);">50% PROC</span>
+          </div>
+          <ul class="element-list" id="element-list">
+            <li class="element-empty">Sin elementos adquiridos (Abre el cofre de la sala inicial)</li>
+          </ul>
+        </div>
+
+        <!-- Columna Derecha: Catálogo de 75 Reliquias & Inspector -->
+        <div class="tab-column tab-relics-col">
+          <div class="tab-section-header">
+            <span>INVENTARIO Y ARCHIVO DE RELIQUIAS</span>
+            <span id="relic-count" style="color: var(--accent-gold);">0 / 75</span>
+          </div>
+          <div class="relic-grid" id="relic-grid"></div>
+          <div class="relic-inspector" id="relic-inspector">
+            <span class="relic-inspector-title" id="relic-inspector-title">SIN RELIQUIA SELECCIONADA</span>
+            <span class="relic-inspector-desc" id="relic-inspector-desc">
+              Pasa el cursor sobre cualquier reliquia para inspeccionar sus atributos e historia táctica.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       5. MENÚ DE PAUSA & CONFIGURACIÓN (TECLA ESC)
+       ===================================================================== -->
+  <div class="pause-menu-overlay hidden" id="pause-menu">
+    <div class="pause-box">
+      <div class="pause-header">
+        <span class="pause-icon">⏸</span>
+        <span class="pause-title">PAUSA // SISTEMA</span>
+      </div>
+
+      <!-- Control de Música / Audio y SFX -->
+      <div class="pause-section">
+        <div class="section-header">
+          <span>AUDIO & SONIDO</span>
+          <div style="display: flex; gap: 6px;">
+            <button id="btn-music-skip" class="music-toggle-btn" type="button" title="Siguiente canción">⏭</button>
+            <button id="btn-music-toggle" class="music-toggle-btn" type="button" title="Silenciar / Activar Música">🔊 ON</button>
+          </div>
+        </div>
+        <div class="music-track-row">
+          <span class="music-icon">🎵</span>
+          <span id="music-track-name" class="music-track-name">En espera de inicio...</span>
+        </div>
+        <div class="music-vol-row">
+          <span class="music-vol-label">MÚSICA:</span>
+          <input type="range" id="music-volume-slider" class="music-volume-slider" min="0" max="1" step="0.05" value="0.25" />
+          <span id="music-volume-val" class="music-volume-val">25%</span>
+        </div>
+        <div class="music-vol-row">
+          <span class="music-vol-label">SFX:</span>
+          <input type="range" id="sfx-volume-slider" class="music-volume-slider sfx-slider" min="0" max="1" step="0.05" value="0.50" />
+          <span id="sfx-volume-val" class="music-volume-val">50%</span>
+        </div>
+      </div>
+
+      <!-- Mapa de Controles -->
+      <div class="pause-section">
+        <div class="section-header">
+          <span>MAPA DE CONTROLES</span>
+          <span style="color: var(--accent-cyan);">GUÍA TÁCTICA</span>
+        </div>
+        <div class="pause-controls-grid">
+          <div class="pause-control-row"><span class="control-key">W, A, S, D</span><span class="control-action">Movimiento del Cerdito</span></div>
+          <div class="pause-control-row"><span class="control-key">SHIFT / F</span><span class="control-action">Esquiva Evasiva (2 Cargas)</span></div>
+          <div class="pause-control-row"><span class="control-key">Mouse / Flechas</span><span class="control-action">Apuntar y Atacar</span></div>
+          <div class="pause-control-row"><span class="control-key">1, 2, 3, 4 / Q, E</span><span class="control-action">Cambiar Arma Activa</span></div>
+          <div class="pause-control-row"><span class="control-key">TAB (Mantener)</span><span class="control-action">Stats & Catálogo de Reliquias</span></div>
+          <div class="pause-control-row"><span class="control-key">ESC</span><span class="control-action">Pausar / Reanudar Juego</span></div>
+          <div class="pause-control-row"><span class="control-key">R</span><span class="control-action">Reiniciar Incursión</span></div>
+        </div>
+      </div>
+
+      <!-- Botones de Acción de Pausa -->
+      <div class="pause-actions">
+        <button id="btn-pause-resume" class="btn-pause-action btn-resume" type="button">CONTINUAR [ESC]</button>
+        <button id="btn-pause-restart" class="btn-pause-action btn-restart" type="button">REINICIAR INCURSIÓN [R]</button>
+      </div>
+    </div>
+  </div>
+
+<!-- 1. Módulo independiente de Reliquias y Gestor de Hooks -->
+  <script src="relics.js"></script>
+  <!-- 2. Motor principal y ejecutor del juego -->
+  <script src="script.js"></script>
+</body>
+</html>
