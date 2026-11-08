@@ -857,6 +857,113 @@
       color: #c084fc;
       margin-top: 2px;
     }
+
+    /* =====================================================================
+       BURBUJA FLOTANTE DE INTERACCIÓN EN EL MUNDO (v2.5)
+       ===================================================================== */
+    .world-interact-prompt {
+      position: absolute;
+      transform: translate(-50%, -100%) translateY(-28px);
+      background: rgba(15, 23, 42, 0.94);
+      border: 1.5px solid rgba(192, 132, 252, 0.7);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), 0 0 16px rgba(168, 85, 247, 0.35);
+      border-radius: 12px;
+      padding: 6px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 60;
+      pointer-events: auto;
+      cursor: pointer;
+      user-select: none;
+      backdrop-filter: blur(8px);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      white-space: nowrap;
+    }
+    .world-interact-prompt.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -100%) translateY(-16px);
+    }
+    .world-interact-prompt:hover {
+      border-color: #facc15;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.8), 0 0 20px rgba(250, 204, 21, 0.4);
+    }
+    .interact-key-badge {
+      background: #facc15;
+      color: #0f172a;
+      font-weight: 900;
+      font-family: monospace;
+      font-size: 0.9rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(250, 204, 21, 0.4);
+      animation: pulse-key 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse-key {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+    .interact-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .interact-title {
+      font-size: 0.78rem;
+      font-weight: 900;
+      color: #f8fafc;
+      letter-spacing: 0.05em;
+    }
+    .interact-desc {
+      font-size: 0.68rem;
+      color: #cbd5e1;
+    }
+    .interact-cost-badge {
+      background: rgba(168, 85, 247, 0.25);
+      border: 1px solid rgba(192, 132, 252, 0.6);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #facc15;
+    }
+
+    /* Ocultar botón directo del santuario en HUD durante la partida para limpiar pantalla */
+    .sanctuary-quick-btn {
+      display: none !important;
+    }
+
+    .transmutation-header-badges {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .transmutation-gold-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(250, 204, 21, 0.35);
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: #94a3b8;
+    }
+    .transmutation-gold-num {
+      color: #facc15;
+      font-size: 0.9rem;
+    }
+    .transmutation-free-badge {
+      padding: 6px 12px;
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid rgba(34, 197, 94, 0.5);
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: #4ade80;
+    }
     .transmutation-keys-badge {
       display: flex;
       align-items: center;
@@ -889,73 +996,73 @@
     }
     .transmutation-relic-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 12px;
-      max-height: 250px;
+      max-height: 280px;
       overflow-y: auto;
-      padding: 4px;
+      padding: 6px;
     }
     .transmute-relic-card {
       display: flex;
       align-items: flex-start;
       gap: 12px;
       padding: 12px;
-      background: rgba(30, 41, 59, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
+      background: rgba(30, 41, 59, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
       cursor: pointer;
       transition: all 0.2s ease;
       user-select: none;
     }
     .transmute-relic-card:hover {
-      background: rgba(49, 46, 129, 0.4);
-      border-color: rgba(192, 132, 252, 0.6);
+      background: rgba(49, 46, 129, 0.45);
+      border-color: rgba(192, 132, 252, 0.7);
       transform: translateY(-2px);
     }
     .transmute-relic-card.selected {
-      background: rgba(168, 85, 247, 0.22);
+      background: rgba(168, 85, 247, 0.28);
       border-color: #c084fc !important;
-      box-shadow: 0 0 16px rgba(168, 85, 247, 0.35);
+      box-shadow: 0 0 20px rgba(168, 85, 247, 0.45), inset 0 0 10px rgba(168, 85, 247, 0.2);
+      transform: translateY(-2px);
     }
     .transmute-relic-badge {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.75rem;
+      font-size: 1.15rem;
       font-weight: 900;
-      color: #0f172a;
+      color: #ffffff;
       flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     }
     .transmute-relic-details {
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 3px;
       min-width: 0;
     }
     .transmute-relic-name {
-      font-size: 0.82rem;
+      font-size: 0.84rem;
       font-weight: 800;
       color: #f8fafc;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      word-break: break-word;
     }
     .transmute-relic-lvl {
-      font-size: 0.65rem;
-      font-weight: 700;
+      font-size: 0.68rem;
+      font-weight: 800;
       color: #facc15;
+      letter-spacing: 0.04em;
     }
     .transmute-relic-desc {
-      font-size: 0.68rem;
-      color: #94a3b8;
-      line-height: 1.25;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      line-height: 1.35;
+      margin-top: 2px;
+      word-break: break-word;
     }
     .transmute-empty-msg {
       grid-column: 1 / -1;
@@ -2638,6 +2745,15 @@
     <div class="canvas-wrapper">
       <canvas id="gameCanvas" width="960" height="640"></canvas>
       <div id="floating-text-container" class="floating-text-container"></div>
+      <!-- Burbuja flotante de inspección y acción en el mundo [E] (v2.5) -->
+      <div id="world-interact-prompt" class="world-interact-prompt hidden">
+        <div class="interact-key-badge">E</div>
+        <div class="interact-info">
+          <div class="interact-title" id="interact-prompt-title">INTERACCIÓN</div>
+          <div class="interact-desc" id="interact-prompt-desc">Presiona [E] o haz clic para interactuar</div>
+        </div>
+        <div class="interact-cost-badge" id="interact-prompt-cost">GRATIS</div>
+      </div>
       <div class="game-overlay hidden" id="game-overlay">
         <div class="overlay-card-box">
           <div class="overlay-title" id="overlay-title">HAS CAÍDO EN LA MAZMORRA</div>
@@ -2980,7 +3096,7 @@
   </div>
 
   <!-- =====================================================================
-       YUNQUE TRANSMUTADOR: RECICLAJE Y REFORJA DE RELIQUIAS (v2.4)
+       YUNQUE TRANSMUTADOR: RECICLAJE Y REFORJA DE RELIQUIAS (v2.5)
        ===================================================================== -->
   <div class="transmutation-modal-overlay hidden" id="transmutation-modal">
     <div class="transmutation-card">
@@ -2989,12 +3105,17 @@
           <span style="font-size: 1.8rem;">⚒️</span>
           <div>
             <div class="transmutation-heading">YUNQUE TRANSMUTADOR // FORJA DEL ABISMO</div>
-            <div class="transmutation-subheading">Funde o transmuta reliquias usando Llaves para perfeccionar tu build.</div>
+            <div class="transmutation-subheading">Funde o transmuta reliquias sin coste de llaves para perfeccionar tu build.</div>
           </div>
         </div>
-        <div class="transmutation-keys-badge">
-          <span>LLAVES DISPONIBLES:</span>
-          <span id="transmutation-keys-num" class="transmutation-keys-num">1 🔑</span>
+        <div class="transmutation-header-badges">
+          <div class="transmutation-gold-badge">
+            <span>ORO:</span>
+            <span id="transmutation-gold-num" class="transmutation-gold-num">0 🪙</span>
+          </div>
+          <div class="transmutation-free-badge" id="transmutation-free-badge">
+            ✨ 1 USO GRATIS
+          </div>
         </div>
       </div>
 
@@ -3013,21 +3134,21 @@
               <span class="btn-action-icon">🔮</span>
               <div class="btn-action-text">
                 <strong>TRANSMUTAR EN EL VACÍO</strong>
-                <small>Reroll por 1 nueva reliquia (Coste: 1 🔑)</small>
+                <small id="transmute-cost-label">✨ GRATIS (1er uso) · Nueva reliquia aleatoria</small>
               </div>
             </button>
             <button class="btn-salvage" id="btn-salvage-action" disabled>
-              <span class="btn-action-icon">🪙</span>
+              <span class="btn-action-icon">❤️</span>
               <div class="btn-action-text">
-                <strong>FUNDIR POR RECURSOS</strong>
-                <small>Recibe +25 Oro, +15 Gemas y +25 HP (Coste: 1 🔑)</small>
+                <strong>FUNDIR EN EL YUNQUE</strong>
+                <small id="salvage-cost-label">✨ GRATIS (1er uso) · +35 HP, +1 🔑 y +25 🪙</small>
               </div>
             </button>
             <button class="btn-reforge" id="btn-reforge-action" disabled>
-              <span class="btn-action-icon">⚒️</span>
+              <span class="btn-action-icon">⬆️</span>
               <div class="btn-action-text">
-                <strong>REFORJA DE MAESTRÍA</strong>
-                <small>Sube +1 Nivel a esta reliquia (Coste: 2 🔑)</small>
+                <strong>MEJORAR MAESTRÍA (+1 NIVEL)</strong>
+                <small id="reforge-cost-label">Coste: 30 🪙 Oro · Mejora stats (Sin Llaves)</small>
               </div>
             </button>
           </div>
@@ -3035,7 +3156,7 @@
       </div>
 
       <div class="transmutation-bottom-bar">
-        <div class="transmutation-tip">💡 Transmutar nunca destruye tus reliquias sin darte una nueva opción a cambio.</div>
+        <div class="transmutation-tip">💡 Transmutar te da una reliquia nueva gratis, o fúndela para recuperar +35 HP, 1 Llave 🔑 y 25 Oro 🪙.</div>
         <button class="btn-transmutation-close" id="btn-transmutation-close">SALIR DE LA FORJA [ESC]</button>
       </div>
     </div>

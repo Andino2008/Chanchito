@@ -162,7 +162,13 @@ class InputManager {
       if (e.code === 'Digit3') onWeaponSelect(2);
       if (e.code === 'Digit4') onWeaponSelect(2);
       if (e.code === 'KeyQ') onWeaponSelect('prev');
-      if (e.code === 'KeyE') onWeaponSelect('next');
+      if (e.code === 'KeyE') {
+        if (window.activeGameInstance && window.activeGameInstance.tryInteract()) {
+          e.preventDefault();
+          return;
+        }
+        onWeaponSelect('next');
+      }
       if (e.code === 'KeyR') onRestart();
       if ((e.code === 'Space' || e.key === ' ') && !e.repeat) {
         e.preventDefault();
@@ -487,6 +493,7 @@ class RelicChest extends Entity {
     this.opened = false;
     this.openAnimTimer = 0;
     this.pulseTimer = 0;
+    this.isLocked = false; // Recompensas de combate SIEMPRE 100% gratis
     this.grantedRelics = [];
     this.grantedRelic = null;
   }
@@ -504,82 +511,67 @@ class RelicChest extends Entity {
     }
 
     if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
-      if (this.isLocked) {
-        if (player.keys > 0) {
-          player.useKey();
-          this.isLocked = false;
-          soundManager.playProcedural('door_unlock');
-          if (player.ui) {
-            player.ui.spawnFloatingText('★ COFRE ABISAL DESBLOQUEADO [🔑 -1]', '#c084fc', this.x, this.y - 25);
-          }
-        } else {
-          if (!this.lastWarnTimer || Date.now() - this.lastWarnTimer > 1800) {
-            this.lastWarnTimer = Date.now();
-            soundManager.playProcedural('hurt');
-            if (player.ui) {
-              player.ui.showToast('¡COFRE ABISAL CERRADO! Necesitas 1 Llave [🔑] para abrirlo');
-              player.ui.spawnFloatingText('🔒 REQUIERE 1 LLAVE [🔑]', '#c084fc', this.x, this.y - 25);
-            }
-          }
-          return;
-        }
-      }
-      this.opened = true;
-      this.openAnimTimer = 3.2;
-
-      // Buff de Cofres en NG+: 2 tiradas independientes de RNG si ngPlusLevel >= 1
-      this.grantedRelics = [];
-      const pulls = ngPlusLevel >= 1 ? 2 : 1;
-      for (let p = 0; p < pulls; p++) {
-        const relic = player.itemManager.grantRandomRelic();
-        if (relic) {
-          this.grantedRelics.push(relic);
-        }
-      }
-      this.grantedRelic = this.grantedRelics[0] || null;
-
-      if (player.ui) {
-        if (pulls === 2 && this.grantedRelics.length === 2) {
-          const r1 = this.grantedRelics[0];
-          const r2 = this.grantedRelics[1];
-          player.ui.showToast(
-            `★ [DOBLE DROP NG+] RELIQUIAS OBTENIDAS: ${r1.name.toUpperCase()} & ${r2.name.toUpperCase()}`
-          );
-          // Feedback visual con texto flotante DOM para ambas mejoras
-          player.ui.spawnFloatingText(`★ ${r1.name.toUpperCase()}`, r1.color, this.x - 22, this.y - 20);
-          player.ui.spawnFloatingText(`★ ${r2.name.toUpperCase()}`, r2.color, this.x + 22, this.y - 44);
-        } else if (this.grantedRelic) {
-          const lvl = this.grantedRelic.level || 1;
-          if (lvl > 1) {
-            player.ui.showToast(
-              `★ RELIQUIA SUBIÓ DE NIVEL (x${lvl}): ${this.grantedRelic.name.toUpperCase()} [Efectividad x${(1 + lvl * 0.2).toFixed(2)}]`
-            );
-          } else {
-            player.ui.showToast(
-              `★ RELIQUIA OBTENIDA: ${this.grantedRelic.name.toUpperCase()} (${this.grantedRelic.description})`
-            );
-          }
-          player.ui.spawnFloatingText(`★ ${this.grantedRelic.name.toUpperCase()}`, this.grantedRelic.color, this.x, this.y - 24);
-        }
-      }
-
-      // Emisión de partículas radiales según las reliquias concedidas
-      this.grantedRelics.forEach((relic, idx) => {
-        for (let i = 0; i < 18; i++) {
-          const angle = (Math.PI * 2 * i) / 18 + idx * 0.25;
-          const speed = 100 + Math.random() * 140;
-          room.spawnParticle(
-            this.x,
-            this.y,
-            Math.cos(angle) * speed,
-            Math.sin(angle) * speed,
-            5.5,
-            relic.color || '#e879f9',
-            0.75
-          );
-        }
-      });
+      this.openChest(player, room);
     }
+  }
+
+  openChest(player, room) {
+    if (this.opened) return;
+    this.opened = true;
+    this.openAnimTimer = 3.2;
+
+    // Buff de Cofres en NG+: 2 tiradas independientes de RNG si ngPlusLevel >= 1
+    this.grantedRelics = [];
+    const pulls = ngPlusLevel >= 1 ? 2 : 1;
+    for (let p = 0; p < pulls; p++) {
+      const relic = player.itemManager.grantRandomRelic();
+      if (relic) {
+        this.grantedRelics.push(relic);
+      }
+    }
+    this.grantedRelic = this.grantedRelics[0] || null;
+
+    if (player.ui) {
+      if (pulls === 2 && this.grantedRelics.length === 2) {
+        const r1 = this.grantedRelics[0];
+        const r2 = this.grantedRelics[1];
+        player.ui.showToast(
+          `★ [DOBLE DROP NG+] RELIQUIAS OBTENIDAS: ${r1.name.toUpperCase()} & ${r2.name.toUpperCase()}`
+        );
+        // Feedback visual con texto flotante DOM para ambas mejoras
+        player.ui.spawnFloatingText(`★ ${r1.name.toUpperCase()}`, r1.color, this.x - 22, this.y - 20);
+        player.ui.spawnFloatingText(`★ ${r2.name.toUpperCase()}`, r2.color, this.x + 22, this.y - 44);
+      } else if (this.grantedRelic) {
+        const lvl = this.grantedRelic.level || 1;
+        if (lvl > 1) {
+          player.ui.showToast(
+            `★ RELIQUIA SUBIÓ DE NIVEL (x${lvl}): ${this.grantedRelic.name.toUpperCase()} [Efectividad x${(1 + lvl * 0.2).toFixed(2)}]`
+          );
+        } else {
+          player.ui.showToast(
+            `★ RELIQUIA OBTENIDA: ${this.grantedRelic.name.toUpperCase()} (${this.grantedRelic.description})`
+          );
+        }
+        player.ui.spawnFloatingText(`★ ${this.grantedRelic.name.toUpperCase()}`, this.grantedRelic.color, this.x, this.y - 24);
+      }
+    }
+
+    // Emisión de partículas radiales según las reliquias concedidas
+    this.grantedRelics.forEach((relic, idx) => {
+      for (let i = 0; i < 18; i++) {
+        const angle = (Math.PI * 2 * i) / 18 + idx * 0.25;
+        const speed = 100 + Math.random() * 140;
+        room.spawnParticle(
+          this.x,
+          this.y,
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed,
+          5.5,
+          relic.color || '#e879f9',
+          0.75
+        );
+      }
+    });
   }
 
   draw(ctx) {
@@ -1320,21 +1312,37 @@ class LockedChest extends Entity {
           this.lastWarnTimer = Date.now();
           soundManager.playProcedural('hurt');
           if (player.ui) {
-            player.ui.showToast('¡COFRE BLOQUEADO! Necesitas 1 Llave [🔑] para abrirlo');
-            player.ui.spawnFloatingText('🔒 REQUIERE 1 LLAVE [🔑]', '#f59e0b', this.x, this.y - 25);
+            player.ui.showToast('🔒 CANDADO BLOQUEADO: Presiona [E] para FORZARLO (-15 HP) o usa 1 Llave [🔑]');
+            player.ui.spawnFloatingText('[E] FORZAR CANDADO (-15 HP)', '#ef4444', this.x, this.y - 25);
           }
         }
       }
     }
   }
 
-  openChest(player, room) {
+  forceOpen(player, room) {
+    if (this.opened || !player) return;
+    // Forzar el candado pagando 15 HP de integridad
+    player.takeDamage(15, room, { isProjectile: false });
+    soundManager.playProcedural('break_rock');
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(5.0, 0.2);
+    }
+    if (player.ui) {
+      player.ui.showToast('🩸 ¡CANDADO FORZADO CON SANGRE! (-15 HP)');
+      player.ui.spawnFloatingText('💥 CANDADO ROTO (-15 HP)', '#ef4444', this.x, this.y - 25);
+      player.ui.updateHealth(player);
+    }
+    this.openChest(player, room, true);
+  }
+
+  openChest(player, room, wasForced = false) {
     this.opened = true;
     this.openAnimTimer = 2.8;
     soundManager.playProcedural('key');
     soundManager.playProcedural('pedestal');
 
-    if (player.ui) {
+    if (player.ui && !wasForced) {
       player.ui.showToast('¡COFRE DORADO DESBLOQUEADO! [🔑 -1]');
       player.ui.spawnFloatingText('★ BOTÍN DORADO ★', '#fbbf24', this.x, this.y - 30);
     }
@@ -1413,8 +1421,10 @@ class VaultChest extends Entity {
   constructor(x, y) {
     super(x, y, 26, '#38bdf8');
     this.pulseTimer = 0;
-    this.cost = 3;
-    this.openCount = 0;
+    this.keyCost = 1;
+    this.goldCost = 30;
+    this.opened = false;
+    this.openAnimTimer = 0;
     this.interactCooldown = 0;
     this.lastWarnTimer = 0;
   }
@@ -1422,47 +1432,77 @@ class VaultChest extends Entity {
   update(dt, player, room) {
     this.pulseTimer += dt * 4;
     if (this.interactCooldown > 0) this.interactCooldown -= dt;
+    if (this.opened && this.openAnimTimer > 0) this.openAnimTimer -= dt;
+  }
 
-    if (this.interactCooldown <= 0 && MathUtils.circleCollision(this.x, this.y, this.radius + 6, player.x, player.y, player.radius)) {
-      if (player.keys >= this.cost) {
-        this.interactCooldown = 1.0;
-        player.keys -= this.cost;
-        if (player.itemManager) player.itemManager.applyPassiveStats();
-        if (player.ui) player.ui.updateKeys(player.keys);
-        this.openCount++;
+  openWithKey(player, room) {
+    if (this.opened || !player || player.keys < this.keyCost) return;
+    player.keys -= this.keyCost;
+    if (player.ui) player.ui.updateKeys(player.keys);
+    this.grantVaultRewards(player, room, '1 LLAVE 🔑');
+  }
 
-        soundManager.playProcedural('key');
-        soundManager.playProcedural('pedestal');
+  openWithGold(player, room) {
+    if (this.opened || !player || player.coins < this.goldCost) return;
+    player.spendCoins(this.goldCost);
+    if (player.ui) player.ui.updateCoins(player.coins);
+    this.grantVaultRewards(player, room, '30 🪙 ORO');
+  }
 
-        const relic = player.itemManager.grantRandomRelic();
-        player.addShield(50);
+  forceOpen(player, room) {
+    if (this.opened || !player) return;
+    player.takeDamage(25, room, { isProjectile: false });
+    soundManager.playProcedural('break_rock');
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(7.0, 0.25);
+    }
+    if (player.ui) {
+      player.ui.showToast('🩸 ¡BÓVEDA FORZADA CON SANGRE! (-25 HP)');
+      player.ui.spawnFloatingText('💥 BÓVEDA FORZADA (-25 HP)', '#ef4444', this.x, this.y - 30);
+      player.ui.updateHealth(player);
+    }
+    this.grantVaultRewards(player, room, 'SANGRE 🩸');
+  }
 
-        if (player.ui) {
-          const rName = relic ? relic.name.toUpperCase() : 'RELIQUIA MÍSTICA';
-          player.ui.showToast(`¡BÓVEDA DE CERRAJERO ABIERTA! [🔑 -${this.cost}] → ${rName} + 50 ESCUDO`);
-          player.ui.spawnFloatingText(`★ ${rName} (+50 ESCUDO) ★`, '#38bdf8', this.x, this.y - 35);
-        }
+  grantVaultRewards(player, room, methodStr) {
+    this.opened = true;
+    this.openAnimTimer = 3.0;
 
-        if (room && typeof room.spawnParticle === 'function') {
-          for (let i = 0; i < 24; i++) {
-            const ang = (Math.PI * 2 * i) / 24;
-            room.spawnParticle(this.x, this.y, Math.cos(ang) * 120, Math.sin(ang) * 120, 5, '#38bdf8', 0.65);
-          }
-        }
-      } else {
-        if (!this.lastWarnTimer || Date.now() - this.lastWarnTimer > 1800) {
-          this.lastWarnTimer = Date.now();
-          soundManager.playProcedural('hurt');
-          if (player.ui) {
-            player.ui.showToast(`BÓVEDA DE CERRAJERO: Requiere ${this.cost} Llaves [🔑] (Tienes: ${player.keys})`);
-            player.ui.spawnFloatingText(`🔒 BÓVEDA (REQUIERE ${this.cost} 🔑)`, '#38bdf8', this.x, this.y - 25);
-          }
-        }
+    soundManager.playProcedural('key');
+    soundManager.playProcedural('pedestal');
+
+    const relic = player.itemManager.grantRandomRelic();
+    player.addShield(50);
+    player.coins += 25;
+
+    if (player.ui) {
+      player.ui.updateCoins(player.coins);
+      const rName = relic ? relic.name.toUpperCase() : 'RELIQUIA MÍSTICA';
+      player.ui.showToast(`💎 ¡BÓVEDA DEL TESORO ABIERTA! [${methodStr}] → ${rName} + 50 ESCUDO + 25 🪙`);
+      player.ui.spawnFloatingText(`★ ${rName} (+50 ESCUDO) ★`, '#38bdf8', this.x, this.y - 35);
+    }
+
+    if (room && typeof room.spawnParticle === 'function') {
+      for (let i = 0; i < 24; i++) {
+        const ang = (Math.PI * 2 * i) / 24;
+        room.spawnParticle(this.x, this.y, Math.cos(ang) * 120, Math.sin(ang) * 120, 5, '#38bdf8', 0.65);
       }
     }
   }
 
+  interact(player, room) {
+    if (this.opened) return;
+    if (player.keys > 0) {
+      this.openWithKey(player, room);
+    } else if (player.coins >= 30) {
+      this.openWithGold(player, room);
+    } else {
+      this.forceOpen(player, room);
+    }
+  }
+
   draw(ctx) {
+    if (this.opened && this.openAnimTimer <= 0) return;
     const floatY = Math.sin(this.pulseTimer) * 3;
     const cy = this.y + floatY;
     const w = 48;
@@ -1509,27 +1549,50 @@ class ShopItem extends Entity {
 
   update(dt, player) {
     this.floatTimer += dt * 3.5;
-    if (this.purchased) return false;
-
-    if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
-      if (player.coins >= this.cost) {
-        player.spendCoins(this.cost);
-        this.applyUpgrade(player);
-        this.purchased = true;
-        if (player.itemManager) {
-          player.itemManager.onUpgradeChosen(this.type);
-        }
-        if (player.ui) {
-          player.ui.showToast(`¡MEJORA ADQUIRIDA: ${this.title} (-${this.cost} Monedas)!`);
-        }
-        return true;
-      } else if (player.ui) {
-        player.ui.showToast(
-          `Monedas insuficientes para ${this.title} (Requiere ${this.cost} Monedas)`
-        );
-      }
-    }
+    // Ya no compra accidentalmente por colisión. Se adquiere con [E] o click en el prompt.
     return false;
+  }
+
+  buy(player, room) {
+    if (this.purchased || !player) return false;
+    if (player.coins >= this.cost) {
+      player.spendCoins(this.cost);
+      this.applyUpgrade(player);
+      this.purchased = true;
+      if (player.itemManager) {
+        player.itemManager.onUpgradeChosen(this.type);
+      }
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('coin', { volume: 0.85 });
+      }
+      if (player.ui) {
+        player.ui.updateCoins(player.coins);
+        player.ui.showToast(`¡MEJORA ADQUIRIDA: ${this.title} (-${this.cost} 🪙)!`);
+        player.ui.spawnFloatingText(`★ ${this.title.toUpperCase()} ★`, this.color, this.x, this.y - 25);
+      }
+      if (room) {
+        room.shopSelectionMade = true;
+        room.shopItems = [this];
+        for (let i = 0; i < 14; i++) {
+          const angle = (Math.PI * 2 * i) / 14;
+          room.spawnParticle(this.x, this.y, Math.cos(angle) * 110, Math.sin(angle) * 110, 4.5, this.color, 0.6);
+        }
+      }
+      return true;
+    } else {
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('hurt');
+      }
+      if (player.ui) {
+        player.ui.showToast(`Monedas insuficientes para ${this.title} (Requiere ${this.cost} 🪙)`);
+        player.ui.spawnFloatingText(`🔒 REQUIERE ${this.cost} 🪙`, '#ef4444', this.x, this.y - 25);
+      }
+      return false;
+    }
+  }
+
+  interact(player, room) {
+    return this.buy(player, room);
   }
 
   applyUpgrade(player) {
@@ -7715,12 +7778,14 @@ class SanctuaryAltar extends Entity {
 
   update(dt, player, room) {
     this.floatTimer += dt * 3.5;
-    if (this.purchased) return false;
+    // Ya no compra accidentalmente por colisión. Se adquiere con [E] o click en el prompt.
+    return false;
+  }
 
-    if (
-      player.coins >= this.cost &&
-      MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)
-    ) {
+  buy(player, room) {
+    if (this.purchased || !player) return false;
+
+    if (player.coins >= this.cost) {
       player.spendCoins(this.cost);
       this.purchased = true;
 
@@ -7752,6 +7817,15 @@ class SanctuaryAltar extends Entity {
         player.itemManager.onUpgradeChosen(this.altarType);
       }
 
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('pedestal');
+      }
+
+      if (player.ui) {
+        player.ui.updateCoins(player.coins);
+        player.ui.spawnFloatingText(`★ ${this.title.toUpperCase()} ★`, this.color, this.x, this.y - 28);
+      }
+
       if (room) {
         if (room.altars) {
           room.altars = [this];
@@ -7771,8 +7845,20 @@ class SanctuaryAltar extends Entity {
         }
       }
       return true;
+    } else {
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('hurt');
+      }
+      if (player.ui) {
+        player.ui.showToast(`Monedas insuficientes para ${this.title} (Requiere ${this.cost} 🪙)`);
+        player.ui.spawnFloatingText(`🔒 REQUIERE ${this.cost} 🪙`, '#ef4444', this.x, this.y - 25);
+      }
+      return false;
     }
-    return false;
+  }
+
+  interact(player, room) {
+    return this.buy(player, room);
   }
 
   draw(ctx, player) {
@@ -8833,11 +8919,11 @@ class Room {
           if (Math.random() < dropChance) {
             const safePos = this.getWalkablePosition(this.bounds.centerX, this.bounds.centerY, 26);
             const rChest = new RelicChest(safePos.x, safePos.y);
-            rChest.isLocked = true;
+            rChest.isLocked = false;
             this.relicChests.push(rChest);
             if (player.ui) {
-              player.ui.showToast('★ ¡COFRE ABISAL CERRADO! Usa 1 Llave [🔑] para desbloquearlo');
-              player.ui.spawnFloatingText('★ COFRE ABISAL [🔑]', '#c084fc', safePos.x, safePos.y - 25);
+              player.ui.showToast('★ ¡COFRE DE COMBATE! Recompensa de sala despejada');
+              player.ui.spawnFloatingText('★ COFRE DE VICTORIA ★', '#c084fc', safePos.x, safePos.y - 25);
             }
           }
         } else if (
@@ -8892,6 +8978,200 @@ class Room {
       part.update(dt);
     }
     this.particles = this.particles.filter((pt) => pt.lifeTime > 0);
+
+    // Actualización de interacción en el mundo y prompt [E] (v2.5)
+    const nearest = this.getNearestInteractable(player);
+    this.currentInteractable = nearest;
+    if (player && player.ui && typeof player.ui.updateInteractPrompt === 'function') {
+      player.ui.updateInteractPrompt(nearest);
+    }
+  }
+
+  getNearestInteractable(player) {
+    if (!player || player.hp <= 0) return null;
+    let closest = null;
+    let closestDist = Infinity;
+
+    // 1. Yunque Transmutador
+    if (this.transmutationAnvil && !this.transmutationAnvil.markedForDeletion) {
+      const d = Math.hypot(player.x - this.transmutationAnvil.x, player.y - this.transmutationAnvil.y);
+      if (d <= 65 && d < closestDist) {
+        closestDist = d;
+        const isFree = (this.transmutationAnvil.freeUses > 0);
+        closest = {
+          entity: this.transmutationAnvil,
+          x: this.transmutationAnvil.x,
+          y: this.transmutationAnvil.y,
+          title: '⚒️ YUNQUE TRANSMUTADOR',
+          desc: 'Transmuta o Funde Reliquias',
+          cost: isFree ? '✨ 1 USO GRATIS' : '25 🪙 Oro',
+          costColor: isFree ? '#4ade80' : '#facc15',
+          interact: (p, r) => {
+            this.transmutationAnvil.interact(p, r);
+          }
+        };
+      }
+    }
+
+    // 2. Cofres con Candado
+    if (this.lockedChests && this.lockedChests.length > 0) {
+      for (const lc of this.lockedChests) {
+        if (lc.opened) continue;
+        const d = Math.hypot(player.x - lc.x, player.y - lc.y);
+        if (d <= 60 && d < closestDist) {
+          closestDist = d;
+          const hasKey = player.keys > 0;
+          closest = {
+            entity: lc,
+            x: lc.x,
+            y: lc.y,
+            title: '🔒 COFRE CON CANDADO',
+            desc: hasKey ? 'Abrir con llave' : 'Romper candado a golpes',
+            cost: hasKey ? '1 Llave 🔑' : 'Forzar (-15 HP ❤️)',
+            costColor: hasKey ? '#facc15' : '#ef4444',
+            interact: (p, r) => {
+              if (p.keys > 0) {
+                p.useKey();
+                lc.openChest(p, r);
+              } else {
+                lc.forceOpen(p, r);
+              }
+            }
+          };
+        }
+      }
+    }
+
+    // 3. Gran Bóveda Abisal
+    if (this.vaultChest && !this.vaultChest.opened) {
+      const d = Math.hypot(player.x - this.vaultChest.x, player.y - this.vaultChest.y);
+      if (d <= 65 && d < closestDist) {
+        closestDist = d;
+        const hasKey = player.keys > 0;
+        const hasGold = player.coins >= 30;
+        let costStr = '1 Llave 🔑';
+        let costCol = '#facc15';
+        let descStr = 'Desbloquear bóveda abisal';
+        if (!hasKey && hasGold) {
+          costStr = '30 🪙 Oro';
+          descStr = 'Sobornar cerrojo de bóveda';
+        } else if (!hasKey && !hasGold) {
+          costStr = 'Forzar (-25 HP ❤️)';
+          costCol = '#ef4444';
+          descStr = 'Forzar con tu sangre';
+        }
+        closest = {
+          entity: this.vaultChest,
+          x: this.vaultChest.x,
+          y: this.vaultChest.y,
+          title: '💎 BÓVEDA DEL TESORO',
+          desc: descStr,
+          cost: costStr,
+          costColor: costCol,
+          interact: (p, r) => {
+            if (p.keys > 0) {
+              this.vaultChest.openWithKey(p, r);
+            } else if (p.coins >= 30) {
+              this.vaultChest.openWithGold(p, r);
+            } else {
+              this.vaultChest.forceOpen(p, r);
+            }
+          }
+        };
+      }
+    }
+
+    // 4. Objetos de la Tienda
+    if (this.shopItems && this.shopItems.length > 0) {
+      for (const item of this.shopItems) {
+        if (item.purchased) continue;
+        const d = Math.hypot(player.x - item.x, player.y - item.y);
+        if (d <= 55 && d < closestDist) {
+          closestDist = d;
+          const canAfford = player.coins >= item.cost;
+          closest = {
+            entity: item,
+            x: item.x,
+            y: item.y,
+            title: `🛒 ${item.title}`,
+            desc: item.subtitle || 'Mejora pasiva permanente',
+            cost: `${item.cost} 🪙 Oro`,
+            costColor: canAfford ? '#facc15' : '#ef4444',
+            interact: (p, r) => {
+              item.buy(p, r);
+            }
+          };
+        }
+      }
+    }
+
+    // 5. Altares del Santuario
+    if (this.altars && this.altars.length > 0) {
+      for (const altar of this.altars) {
+        if (altar.purchased) continue;
+        const d = Math.hypot(player.x - altar.x, player.y - altar.y);
+        if (d <= 55 && d < closestDist) {
+          closestDist = d;
+          const canAfford = player.coins >= altar.cost;
+          closest = {
+            entity: altar,
+            x: altar.x,
+            y: altar.y,
+            title: `✨ ${altar.title}`,
+            desc: 'Bendición del Santuario',
+            cost: `${altar.cost} 🪙 Oro`,
+            costColor: canAfford ? '#facc15' : '#ef4444',
+            interact: (p, r) => {
+              altar.buy(p, r);
+            }
+          };
+        }
+      }
+    }
+
+    // 6. Monolitos y Altares en hazards
+    if (this.hazards && this.hazards.length > 0) {
+      for (const haz of this.hazards) {
+        if (haz.markedForDeletion) continue;
+        const d = Math.hypot(player.x - haz.x, player.y - haz.y);
+        if (typeof ChallengeMonolith !== 'undefined' && haz instanceof ChallengeMonolith) {
+          if (!haz.isActive && !haz.completed && d <= 60 && d < closestDist) {
+            closestDist = d;
+            closest = {
+              entity: haz,
+              x: haz.x,
+              y: haz.y,
+              title: '⚔️ MONOLITO DE DESAFÍO',
+              desc: '2 Oleadas de Élites por Gran Botín',
+              cost: '¡INICIAR!',
+              costColor: '#f87171',
+              interact: (p, r) => {
+                haz.interact(p, r);
+              }
+            };
+          }
+        }
+        if (typeof BloodPactAltar !== 'undefined' && haz instanceof BloodPactAltar) {
+          if (!haz.consumed && d <= 60 && d < closestDist) {
+            closestDist = d;
+            closest = {
+              entity: haz,
+              x: haz.x,
+              y: haz.y,
+              title: '🩸 ALTAR DE SANGRE',
+              desc: 'Sacrifica 20 HP por +35% Daño',
+              cost: '-20 HP ❤️',
+              costColor: '#ef4444',
+              interact: (p, r) => {
+                haz.interact(p, r);
+              }
+            };
+          }
+        }
+      }
+    }
+
+    return closest;
   }
 
   drawPortalVortex(ctx, x, y, radius, fillColor, strokeColor, isActive = true) {
@@ -10093,6 +10373,16 @@ class UIManager {
     this.relicSlots = [];
     this.initRelicGridSlots();
     this.initSanctuaryModal();
+
+    const interactPromptEl = document.getElementById('world-interact-prompt');
+    if (interactPromptEl) {
+      interactPromptEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (window.activeGameInstance) {
+          window.activeGameInstance.tryInteract();
+        }
+      });
+    }
   }
 
   initSanctuaryModal() {
@@ -10860,6 +11150,38 @@ class UIManager {
     }, 1600);
   }
 
+  /**
+   * Actualiza la posición y contenido de la burbuja interactiva flotante [E] (v2.5)
+   */
+  updateInteractPrompt(interactable) {
+    const promptEl = document.getElementById('world-interact-prompt');
+    if (!promptEl) return;
+    if (!interactable) {
+      promptEl.classList.add('hidden');
+      return;
+    }
+    const canvasW = CONFIG.CANVAS_WIDTH || 960;
+    const canvasH = CONFIG.CANVAS_HEIGHT || 640;
+    const pctX = ((interactable.x / canvasW) * 100).toFixed(2);
+    const pctY = ((interactable.y / canvasH) * 100).toFixed(2);
+    promptEl.style.left = `${pctX}%`;
+    promptEl.style.top = `${pctY}%`;
+
+    const titleEl = document.getElementById('interact-prompt-title');
+    const descEl = document.getElementById('interact-prompt-desc');
+    const costEl = document.getElementById('interact-prompt-cost');
+
+    if (titleEl) titleEl.textContent = interactable.title;
+    if (descEl) descEl.textContent = interactable.desc;
+    if (costEl) {
+      costEl.textContent = interactable.cost;
+      costEl.style.color = interactable.costColor || '#facc15';
+      costEl.style.borderColor = interactable.costColor || '#facc15';
+    }
+
+    promptEl.classList.remove('hidden');
+  }
+
   setOverlayState(gameState, gameInstance) {
     if (!this.dom.gameOverlay) return;
     if (gameState === 'PLAYING') {
@@ -10997,6 +11319,16 @@ class Game {
 
   triggerHitStop(duration = 0.04) {
     this.hitStopTimer = duration;
+  }
+
+  tryInteract() {
+    if (!this.currentRoom || !this.player || this.player.hp <= 0) return false;
+    const interactable = this.currentRoom.currentInteractable;
+    if (interactable && typeof interactable.interact === 'function') {
+      interactable.interact(this.player, this.currentRoom);
+      return true;
+    }
+    return false;
   }
 
   togglePause(forceState) {

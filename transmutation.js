@@ -1,26 +1,24 @@
 /**
  * ============================================================================
- * SISTEMA MODULAR DE TRANSMUTACIÓN Y RECICLAJE DE RELIQUIAS (`transmutation.js` - v2.4)
+ * SISTEMA MODULAR DE TRANSMUTACIÓN Y RECICLAJE DE RELIQUIAS (`transmutation.js` - v2.5)
  * ============================================================================
- * Permite al jugador gastar llaves en el Yunque Abisal para fundir, transmutar
- * o subir de nivel reliquias indeseadas, resolviendo el problema de la mala suerte
- * y eliminando las "runs muertas" (Dead Runs).
- *
- * Módulos contenidos:
- *  1. TRANSMUTATION_CONFIG: Costes en llaves y recompensas de reciclaje.
- *  2. TransmutationAnvil: Entidad interactiva en salas de tienda y tesoro.
- *  3. TransmutationManager: Gestor del modal HTML, selección y forja.
+ * Rediseño integral basado en la "Regla de los 3 Segundos" (Mobile & Quick-Play):
+ *  1. CERO coste de llaves: Las llaves se reservan exclusivamente para puertas y cofres.
+ *  2. 1 Uso Gratuito por sala / yunque: Transmutar o Fundir sin costo alguno en el 1er uso.
+ *  3. Fundir Salvavidas: Desarmar una reliquia otorga +35 HP curados + 1 Llave 🔑 + 25 Oro 🪙.
+ *  4. Reforja con Oro: Subir de nivel una reliquia cuesta 30 Oro 🪙 (sin llaves).
+ *  5. Interacción limpia con [E]: Se activa con tecla o clic, nunca al pasar caminando.
+ *  6. Tarjetas claras con iconos intuitivos y descripciones completas sin cortes.
  * ============================================================================
  */
 
 const TRANSMUTATION_CONFIG = {
-  KEY_COST_TRANSMUTE: 1, // 1 llave para re-rollear por otra reliquia
-  KEY_COST_SALVAGE: 1,   // 1 llave para desarmar por oro + gemas + curación
-  KEY_COST_UPGRADE: 2,   // 2 llaves para subir +1 nivel garantizado a una reliquia
   SALVAGE_GOLD: 25,
-  SALVAGE_SHARDS: 15,
-  SALVAGE_HEAL: 25,
-  INTERACT_RADIUS: 42,
+  SALVAGE_KEYS: 1,
+  SALVAGE_HEAL: 35,
+  UPGRADE_COST_GOLD: 30,
+  REUSE_COST_GOLD: 25,
+  INTERACT_RADIUS: 65,
 };
 
 // BaseEntity defensiva para evitar dependencias del orden de carga de scripts
@@ -49,24 +47,22 @@ class TransmutationAnvil extends BaseEntityTransmute {
     this.pulseTimer = 0;
     this.hoverTimer = 0;
     this.interactCooldown = 0;
+    this.freeUses = 1; // 1 uso 100% gratuito por yunque
   }
 
   update(dt, player, room) {
     this.pulseTimer += dt * 3.5;
     this.hoverTimer += dt * 2.5;
     if (this.interactCooldown > 0) this.interactCooldown -= dt;
+    // Nota: Ya NO abre el modal automáticamente por proximidad.
+    // La apertura se gestiona mediante el World Interaction Prompt [E] o click.
+  }
 
-    if (!player) return;
-    const dist = Math.hypot(player.x - this.x, player.y - this.y);
-
-    // Al aproximarse el jugador, abre la interfaz de forja si no está ya abierta
-    if (dist <= this.radius + player.radius + 14 && this.interactCooldown <= 0) {
-      if (typeof TransmutationManager !== 'undefined') {
-        if (!TransmutationManager.isOpen()) {
-          TransmutationManager.openModal(player, player.ui);
-          this.interactCooldown = 0.6;
-        }
-      }
+  interact(player, room) {
+    if (this.interactCooldown > 0) return;
+    this.interactCooldown = 0.5;
+    if (typeof TransmutationManager !== 'undefined') {
+      TransmutationManager.openModal(player, player ? player.ui : null, this);
     }
   }
 
@@ -78,10 +74,10 @@ class TransmutationAnvil extends BaseEntityTransmute {
     // 1. Aura rúnica en el piso
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius + 12 + pulse, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(168, 85, 247, 0.16)';
+    ctx.fillStyle = this.freeUses > 0 ? 'rgba(34, 197, 94, 0.16)' : 'rgba(168, 85, 247, 0.16)';
     ctx.fill();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(192, 132, 252, 0.4)';
+    ctx.strokeStyle = this.freeUses > 0 ? 'rgba(74, 222, 128, 0.5)' : 'rgba(192, 132, 252, 0.4)';
     ctx.stroke();
 
     // 2. Pedestal metálico del Yunque (base trapezoidal)
@@ -102,7 +98,7 @@ class TransmutationAnvil extends BaseEntityTransmute {
     ctx.beginPath();
     ctx.rect(this.x - 16, this.y - 12, 32, 10);
     ctx.fill();
-    ctx.strokeStyle = '#a855f7';
+    ctx.strokeStyle = this.freeUses > 0 ? '#4ade80' : '#a855f7';
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -120,7 +116,7 @@ class TransmutationAnvil extends BaseEntityTransmute {
     const flameY = this.y - 20 + hover;
     ctx.beginPath();
     ctx.arc(this.x, flameY, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#c084fc';
+    ctx.fillStyle = this.freeUses > 0 ? '#4ade80' : '#c084fc';
     ctx.fill();
 
     ctx.beginPath();
@@ -138,6 +134,7 @@ class TransmutationAnvil extends BaseEntityTransmute {
 class TransmutationManager {
   static activePlayer = null;
   static activeUi = null;
+  static activeAnvil = null;
   static selectedRelicId = null;
   static initialized = false;
 
@@ -178,10 +175,11 @@ class TransmutationManager {
     return Boolean(modal && !modal.classList.contains('hidden'));
   }
 
-  static openModal(player, ui) {
+  static openModal(player, ui, anvil = null) {
     this.init();
     this.activePlayer = player;
     this.activeUi = ui;
+    this.activeAnvil = anvil;
     this.selectedRelicId = null;
 
     const modal = document.getElementById('transmutation-modal');
@@ -210,18 +208,58 @@ class TransmutationManager {
     }
   }
 
+  /**
+   * Genera un icono visual limpio y temático para la tarjeta en lugar de abreviaturas crípticas
+   */
+  static getRelicIcon(relic) {
+    if (!relic) return '✨';
+    if (relic.icon) return relic.icon;
+    const id = (relic.id || '').toUpperCase();
+    const name = (relic.name || '').toUpperCase();
+    if (id.includes('BULLET') || name.includes('BALA')) return '⚡';
+    if (id.includes('SHIELD') || id.includes('ARMOR') || name.includes('ESCUDO') || name.includes('CORAZA')) return '🛡️';
+    if (id.includes('HEART') || id.includes('BLOOD') || name.includes('SANGRE') || name.includes('VIDA') || name.includes('FENIX')) return '❤️';
+    if (id.includes('DAMAGE') || id.includes('SWORD') || name.includes('MASCARA') || name.includes('CALAVERA')) return '⚔️';
+    if (id.includes('SPEED') || id.includes('FEATHER') || name.includes('PLUMA') || name.includes('BOTAS')) return '🪶';
+    if (id.includes('CRIT') || name.includes('OJO') || name.includes('CRIT')) return '🎯';
+    if (id.includes('POISON') || id.includes('TOXIC') || name.includes('VENENO') || name.includes('HONGO')) return '🧪';
+    if (id.includes('TIME') || name.includes('ARENA') || name.includes('TIEMPO')) return '⏳';
+    if (id.includes('METEOR') || id.includes('FIRE') || name.includes('FUEGO') || name.includes('LAVA')) return '🔥';
+    if (id.includes('ICE') || id.includes('FROST') || name.includes('HIELO')) return '❄️';
+    if (id.includes('GOLD') || id.includes('COIN') || name.includes('ORO') || name.includes('MONEDA')) return '🪙';
+    if (id.includes('KEY') || name.includes('LLAVE')) return '🔑';
+    if (id.includes('BOOK') || id.includes('TOME') || name.includes('LIBRO')) return '📖';
+    return '✨';
+  }
+
   static render() {
     const player = this.activePlayer;
     if (!player || !player.itemManager) return;
 
-    // 1. Contador de Llaves
-    const keysNum = document.getElementById('transmutation-keys-num');
-    if (keysNum) {
-      keysNum.textContent = `${player.keys || 0} 🔑`;
-      keysNum.style.color = (player.keys > 0) ? '#facc15' : '#ef4444';
+    // 1. Oro disponible
+    const goldNum = document.getElementById('transmutation-gold-num');
+    if (goldNum) {
+      goldNum.textContent = `${player.coins || 0} 🪙`;
     }
 
-    // 2. Lista de Reliquias poseídas
+    // 2. Estado de uso gratuito
+    const isFree = this.activeAnvil ? (this.activeAnvil.freeUses > 0) : true;
+    const freeBadge = document.getElementById('transmutation-free-badge');
+    if (freeBadge) {
+      if (isFree) {
+        freeBadge.textContent = '✨ 1 USO GRATIS';
+        freeBadge.style.color = '#4ade80';
+        freeBadge.style.borderColor = 'rgba(74, 222, 128, 0.5)';
+        freeBadge.style.background = 'rgba(34, 197, 94, 0.2)';
+      } else {
+        freeBadge.textContent = `REUSO: ${TRANSMUTATION_CONFIG.REUSE_COST_GOLD} 🪙`;
+        freeBadge.style.color = '#facc15';
+        freeBadge.style.borderColor = 'rgba(250, 204, 21, 0.4)';
+        freeBadge.style.background = 'rgba(234, 179, 8, 0.15)';
+      }
+    }
+
+    // 3. Lista de Reliquias poseídas
     const listEl = document.getElementById('transmutation-relic-list');
     if (!listEl) return;
     listEl.innerHTML = '';
@@ -232,7 +270,7 @@ class TransmutationManager {
       listEl.innerHTML = `
         <div class="transmute-empty-msg">
           No tienes reliquias en tu inventario para colocar en el yunque.<br>
-          <small>Explora la mazmorra y abre cofres para conseguir reliquias.</small>
+          <small>Explora la mazmorra y derrota salas o jefes para conseguir reliquias.</small>
         </div>
       `;
       this.updateActionButtons();
@@ -240,17 +278,21 @@ class TransmutationManager {
     }
 
     owned.forEach((relic) => {
+      const isSelected = this.selectedRelicId === relic.id;
       const card = document.createElement('div');
-      card.className = `transmute-relic-card ${this.selectedRelicId === relic.id ? 'selected' : ''}`;
-      card.style.borderColor = this.selectedRelicId === relic.id ? '#c084fc' : 'rgba(255, 255, 255, 0.12)';
+      card.className = `transmute-relic-card ${isSelected ? 'selected' : ''}`;
+      card.style.borderColor = isSelected ? '#c084fc' : 'rgba(255, 255, 255, 0.14)';
+
+      const icon = this.getRelicIcon(relic);
+      const lvl = relic.level || 1;
 
       card.innerHTML = `
-        <div class="transmute-relic-badge" style="background: ${relic.color || '#38bdf8'};">
-          ${relic.short || 'REL'}
+        <div class="transmute-relic-badge" style="background: ${relic.color || '#a855f7'};">
+          ${icon}
         </div>
         <div class="transmute-relic-details">
           <div class="transmute-relic-name">${relic.name}</div>
-          <div class="transmute-relic-lvl">Nivel ${relic.level || 1}</div>
+          <div class="transmute-relic-lvl">NIVEL ${lvl} ★</div>
           <div class="transmute-relic-desc">${relic.description || ''}</div>
         </div>
       `;
@@ -270,12 +312,13 @@ class TransmutationManager {
     const player = this.activePlayer;
     const hasRelic = Boolean(this.selectedRelicId && player && player.itemManager && player.itemManager.hasRelic(this.selectedRelicId));
     const selectedRelic = hasRelic ? player.itemManager.getRelic(this.selectedRelicId) : null;
-    const keys = player ? (player.keys || 0) : 0;
+    const coins = player ? (player.coins || 0) : 0;
+    const isFree = this.activeAnvil ? (this.activeAnvil.freeUses > 0) : true;
 
     const banner = document.getElementById('transmutation-selected-banner');
     if (banner) {
       if (selectedRelic) {
-        banner.innerHTML = `Reliquia en el yunque: <strong style="color: ${selectedRelic.color || '#38bdf8'};">${selectedRelic.name}</strong> (Nv. ${selectedRelic.level || 1})`;
+        banner.innerHTML = `Reliquia en el yunque: <strong style="color: ${selectedRelic.color || '#38bdf8'};">${selectedRelic.name}</strong> (Nv. ${selectedRelic.level || 1}) — ¡Elige una acción abajo!`;
       } else {
         banner.textContent = 'Ninguna reliquia seleccionada. Haz clic en una de tus reliquias arriba para forjarla.';
       }
@@ -285,29 +328,56 @@ class TransmutationManager {
     const btnSalvage = document.getElementById('btn-salvage-action');
     const btnReforge = document.getElementById('btn-reforge-action');
 
+    const transmuteCostLabel = document.getElementById('transmute-cost-label');
+    const salvageCostLabel = document.getElementById('salvage-cost-label');
+    const reforgeCostLabel = document.getElementById('reforge-cost-label');
+
+    const canAffordReuse = isFree || coins >= TRANSMUTATION_CONFIG.REUSE_COST_GOLD;
+    const canAffordReforge = coins >= TRANSMUTATION_CONFIG.UPGRADE_COST_GOLD;
+
+    if (transmuteCostLabel) {
+      transmuteCostLabel.textContent = isFree
+        ? '✨ GRATIS (1er uso) · Nueva reliquia aleatoria'
+        : `Coste: ${TRANSMUTATION_CONFIG.REUSE_COST_GOLD} 🪙 Oro · Nueva reliquia aleatoria`;
+    }
+    if (salvageCostLabel) {
+      salvageCostLabel.textContent = isFree
+        ? `✨ GRATIS (1er uso) · +${TRANSMUTATION_CONFIG.SALVAGE_HEAL} HP, +1 🔑 y +${TRANSMUTATION_CONFIG.SALVAGE_GOLD} 🪙`
+        : `Coste: ${TRANSMUTATION_CONFIG.REUSE_COST_GOLD} 🪙 · +${TRANSMUTATION_CONFIG.SALVAGE_HEAL} HP, +1 🔑 y +${TRANSMUTATION_CONFIG.SALVAGE_GOLD} 🪙`;
+    }
+    if (reforgeCostLabel) {
+      reforgeCostLabel.textContent = `Coste: ${TRANSMUTATION_CONFIG.UPGRADE_COST_GOLD} 🪙 Oro · Mejora stats (Sin Llaves)`;
+    }
+
     if (btnTransmute) {
-      btnTransmute.disabled = !hasRelic || keys < TRANSMUTATION_CONFIG.KEY_COST_TRANSMUTE;
+      btnTransmute.disabled = !hasRelic || !canAffordReuse;
     }
     if (btnSalvage) {
-      btnSalvage.disabled = !hasRelic || keys < TRANSMUTATION_CONFIG.KEY_COST_SALVAGE;
+      btnSalvage.disabled = !hasRelic || !canAffordReuse;
     }
     if (btnReforge) {
-      btnReforge.disabled = !hasRelic || keys < TRANSMUTATION_CONFIG.KEY_COST_UPGRADE;
+      btnReforge.disabled = !hasRelic || !canAffordReforge;
     }
   }
 
   static executeTransmute() {
     const player = this.activePlayer;
     if (!player || !this.selectedRelicId) return;
-    if ((player.keys || 0) < TRANSMUTATION_CONFIG.KEY_COST_TRANSMUTE) return;
+
+    const isFree = this.activeAnvil ? (this.activeAnvil.freeUses > 0) : true;
+    if (!isFree && (player.coins || 0) < TRANSMUTATION_CONFIG.REUSE_COST_GOLD) return;
 
     const relicName = player.itemManager.getRelic(this.selectedRelicId)?.name || 'Reliquia';
 
-    // 1. Cobrar llave y remover reliquia vieja
-    player.keys -= TRANSMUTATION_CONFIG.KEY_COST_TRANSMUTE;
-    player.itemManager.removeRelic(this.selectedRelicId);
+    // 1. Cobrar uso libre o 25 de oro
+    if (isFree && this.activeAnvil) {
+      this.activeAnvil.freeUses--;
+    } else {
+      player.spendCoins(TRANSMUTATION_CONFIG.REUSE_COST_GOLD);
+    }
 
-    // 2. Forjar nueva reliquia aleatoria
+    // 2. Remover reliquia vieja y forjar nueva reliquia aleatoria
+    player.itemManager.removeRelic(this.selectedRelicId);
     const newRelic = player.itemManager.grantRandomRelic();
 
     if (typeof soundManager !== 'undefined' && soundManager) {
@@ -317,7 +387,8 @@ class TransmutationManager {
       window.activeGameInstance.triggerScreenShake(3.5, 0.14);
     }
     if (this.activeUi) {
-      this.activeUi.updateKeys(player.keys);
+      this.activeUi.updateCoins(player.coins);
+      this.activeUi.updateRelics(player.itemManager.ownedRelics);
       this.activeUi.showToast(`🔮 ¡TRANSMUTACIÓN EXITOSA! ${relicName} se convirtió en: ${newRelic ? newRelic.name : 'Nueva Reliquia'}`);
     }
 
@@ -328,27 +399,40 @@ class TransmutationManager {
   static executeSalvage() {
     const player = this.activePlayer;
     if (!player || !this.selectedRelicId) return;
-    if ((player.keys || 0) < TRANSMUTATION_CONFIG.KEY_COST_SALVAGE) return;
+
+    const isFree = this.activeAnvil ? (this.activeAnvil.freeUses > 0) : true;
+    if (!isFree && (player.coins || 0) < TRANSMUTATION_CONFIG.REUSE_COST_GOLD) return;
 
     const relicName = player.itemManager.getRelic(this.selectedRelicId)?.name || 'Reliquia';
 
-    // 1. Cobrar llave y remover reliquia
-    player.keys -= TRANSMUTATION_CONFIG.KEY_COST_SALVAGE;
+    // 1. Cobrar uso libre o 25 de oro
+    if (isFree && this.activeAnvil) {
+      this.activeAnvil.freeUses--;
+    } else {
+      player.spendCoins(TRANSMUTATION_CONFIG.REUSE_COST_GOLD);
+    }
+
+    // 2. Remover reliquia seleccionada
     player.itemManager.removeRelic(this.selectedRelicId);
 
-    // 2. Entregar recursos
-    player.coins += TRANSMUTATION_CONFIG.SALVAGE_GOLD;
-    player.addShards(TRANSMUTATION_CONFIG.SALVAGE_SHARDS);
+    // 3. Entregar salvavidas: +35 HP, +1 Llave garantizada, +25 Oro
     player.heal(TRANSMUTATION_CONFIG.SALVAGE_HEAL);
+    player.keys = (player.keys || 0) + TRANSMUTATION_CONFIG.SALVAGE_KEYS;
+    player.coins += TRANSMUTATION_CONFIG.SALVAGE_GOLD;
+    if (player.itemManager) player.itemManager.applyPassiveStats();
 
     if (typeof soundManager !== 'undefined' && soundManager) {
-      soundManager.playProcedural('coin', { volume: 0.8 });
+      soundManager.playProcedural('coin', { volume: 0.85 });
+    }
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(3.0, 0.12);
     }
     if (this.activeUi) {
+      this.activeUi.updateHealth(player);
       this.activeUi.updateKeys(player.keys);
       this.activeUi.updateCoins(player.coins);
-      this.activeUi.updateHealth(player);
-      this.activeUi.showToast(`🪙 ¡RELIQUIA FUNDIDA! Desarmaste ${relicName}: +${TRANSMUTATION_CONFIG.SALVAGE_GOLD} Oro, +${TRANSMUTATION_CONFIG.SALVAGE_SHARDS} Gemas y +${TRANSMUTATION_CONFIG.SALVAGE_HEAL} HP`);
+      this.activeUi.updateRelics(player.itemManager.ownedRelics);
+      this.activeUi.showToast(`❤️ ¡RELIQUIA FUNDIDA! Desarmaste ${relicName}: +${TRANSMUTATION_CONFIG.SALVAGE_HEAL} HP curados, +1 Llave 🔑 y +${TRANSMUTATION_CONFIG.SALVAGE_GOLD} Oro 🪙`);
     }
 
     this.selectedRelicId = null;
@@ -358,13 +442,13 @@ class TransmutationManager {
   static executeReforge() {
     const player = this.activePlayer;
     if (!player || !this.selectedRelicId) return;
-    if ((player.keys || 0) < TRANSMUTATION_CONFIG.KEY_COST_UPGRADE) return;
+    if ((player.coins || 0) < TRANSMUTATION_CONFIG.UPGRADE_COST_GOLD) return;
 
     const relic = player.itemManager.getRelic(this.selectedRelicId);
     if (!relic) return;
 
-    // 1. Cobrar 2 llaves
-    player.keys -= TRANSMUTATION_CONFIG.KEY_COST_UPGRADE;
+    // 1. Cobrar 30 de oro (Cero llaves)
+    player.spendCoins(TRANSMUTATION_CONFIG.UPGRADE_COST_GOLD);
 
     // 2. Subir de nivel la reliquia
     relic.level = (relic.level || 1) + 1;
@@ -377,7 +461,8 @@ class TransmutationManager {
       window.activeGameInstance.triggerScreenShake(4.0, 0.16);
     }
     if (this.activeUi) {
-      this.activeUi.updateKeys(player.keys);
+      this.activeUi.updateCoins(player.coins);
+      this.activeUi.updateRelics(player.itemManager.ownedRelics);
       this.activeUi.showToast(`⚒️ ¡REFORJA DE MAESTRÍA! ${relic.name} subió a Nivel ${relic.level} ★`);
     }
 

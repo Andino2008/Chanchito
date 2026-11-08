@@ -379,3 +379,22 @@ En la carpeta `<appDataDir>\brain\<conversation-id>\scratch\` se encuentran los 
     * Calcula 5 indicadores (0 a 100): Supervivencia ($S$, 30%), Potencia ($P$, 20%), Velocidad ($V$, 20%), Eficiencia/DTPS ($E$, 20%) y Progresión ($G$, 10%).
     * Ecuación maestra: $R = 0.30S + 0.20P + 0.20V + 0.20E + 0.10G$, comparada con $R_{\text{esperado}} = 65$ ($\Delta = R - 65$).
     * **Dados de Ruido y "Pies en la Tierra":** Tira dados en cada indicador para hallar `maxPoint` y `minPoint`, y un segundo dado de ruido (`noiseRoll`). Si el jugador lleva una build rota dominando varias salas (`godStreak >= 2`, modo `ACOMPAÑAR_BUILD` que suma horda sin inflar vida esponja) y sale el ruido más bajo, activa **`PIES_EN_LA_TIERRA`**, inyectando en la próxima sala un pico de cantidad (+45% a +65%), daño (+30% a +48%) y velocidad (+12% a +18%) para que no se confíe.
+
+### 14.5 Rediseño Integral UX/UI - Regla de los 3 Segundos y Sistema Anti-Frustración (v2.5)
+* **Filosofía Mobile / Quick-Play:** Diseñado para partidas ágiles de 5-10 minutos (esperando el colectivo o el médico), sin interfaces confusas ni textos truncados.
+* **Cofres de Combate SIEMPRE GRATIS:** Los cofres de recompensa por limpiar salas, derrotar élites o jefes (`RelicChest`, `ChampionChest`) son **100% gratuitos**. Se eliminó definitivamente cualquier bloqueo por llave tras el combate.
+* **Mecánica Anti-Runs Muertas (Forzado con Sangre):**
+  * `LockedChest`: Si el jugador tiene llaves, abre con `1 Llave 🔑`. Si tiene `0 Llaves`, puede pulsar `[E]` para **Forzar el Candado (-15 HP ❤️)**. Nunca se queda mirando un cofre sin poder abrirlo.
+  * `VaultChest` (Salas del Tesoro): Abre con `1 Llave 🔑`, `30 🪙 Oro`, o forzando con `-25 HP ❤️`.
+* **Rediseño del Yunque Transmutador (`transmutation.js`):**
+  * **CERO coste de llaves**: Las llaves ya no se usan en la forja.
+  * **1 Uso Gratuito por Sala / Yunque**: El primer uso de Transmutar o Fundir es 100% libre de coste (`freeUses: 1`). Los reusos posteriores en el mismo yunque cuestan 25 Oro.
+  * **Fundir Salvavidas:** Desarmar una reliquia indeseada otorga **+35 HP curados + 1 Llave 🔑 garantizada + 25 Oro 🪙**. Resuelve instantáneamente la falta de llaves o la poca salud en momentos críticos.
+  * **Reforja de Maestría:** Subir +1 Nivel a una reliquia cuesta **30 🪙 Oro** (sin llaves).
+  * **Tarjetas sin Acrónimos Crípticos:** Eliminadas las siglas de 3 letras ("INS", "PES", "CAL"). Se muestran iconos temáticos (⚔️, 🛡️, ❤️, ⚡, 🧪, ⏳, 🪶), títulos completos, nivel en estrellas y descripciones completas sin cortes (eliminado `-webkit-line-clamp: 2`).
+* **Burbuja Flotante de Inspección / Prompt en el Mundo (`#world-interact-prompt`):**
+  * Proyecta una burbuja glassmorphic translúcida sobre el canvas cuando el cerdito se acerca a menos de 65px de una entidad interactiva (`TransmutationAnvil`, `LockedChest`, `VaultChest`, `ShopItem`, `SanctuaryAltar`, `ChallengeMonolith`, `BloodPactAltar`).
+  * Muestra la tecla `[E]`, el nombre del objeto, descripción y costo en tiempo real.
+  * **Prioridad de Tecla `KeyE`:** Al presionar `E` cerca de un interactuable, se ejecuta la interacción prioritariamente y NO cambia de arma.
+  * **Cero Compras / Activaciones Accidentales:** Caminar sobre altares, monolitos o tiendas ya no auto-compra ni activa eventos por colisión fortuita; requiere presionar `[E]` o hacer clic en el prompt.
+* **Limpieza de Pantalla:** Se ocultó `#btn-sanctuary-quick` durante el combate activo (`display: none !important;`) para no saturar la pantalla con menús de meta-progreso durante la partida.

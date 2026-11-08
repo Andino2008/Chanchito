@@ -120,15 +120,8 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
     if (this.completed || !player || !room) return;
 
     if (!this.isActive) {
-      // Estado de espera para activación
-      const d = Math.hypot(player.x - this.x, player.y - this.y);
-      if (d <= this.radius + player.radius + 25) {
-        const input = (player && player.input) || (window.activeGameInstance ? window.activeGameInstance.input : null);
-    const pressedE = Boolean(input && input.keys && (input.keys.has('KeyE') || input.keys.has('Space')));
-    if (pressedE || d <= this.radius + player.radius) {
-          this.activate(room, player);
-        }
-      }
+      // Estado de espera para interacción voluntaria [E] o click.
+      // Ya no se auto-activa al pasar caminando para evitar combates accidentales.
     } else {
       // Combate activo: vigilar oleadas
       this.waveCheckTimer -= dt;
@@ -147,6 +140,11 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
         }
       }
     }
+  }
+
+  interact(player, room) {
+    if (this.completed || this.isActive) return;
+    this.activate(room, player);
   }
 
   activate(room, player) {
@@ -284,39 +282,50 @@ var BloodPactAltar = class BloodPactAltar extends BaseEntity {
   update(dt, player, room) {
     this.pulseTimer += dt * 3.5;
     if (this.consumed || !player || !room) return;
+    // Estado de espera para interacción voluntaria [E] o click.
+    // Ya no se auto-sacrifica al pasar corriendo.
+  }
 
-    const d = Math.hypot(player.x - this.x, player.y - this.y);
-    if (d <= this.radius + player.radius + 20) {
-      const input = (player && player.input) || (window.activeGameInstance ? window.activeGameInstance.input : null);
-    const pressedE = Boolean(input && input.keys && (input.keys.has('KeyE') || input.keys.has('Space')));
-    if (pressedE || d <= this.radius + player.radius) {
-        if (player.hp > 25) {
-          this.consumed = true;
-          // Cobrar el tributo de sangre
-          player.takeDamage(25, room, { isProjectile: false });
+  activate(player, room) {
+    if (this.consumed || !player || !room) return;
 
-          // Otorgar buff permanente de +35% Daño
-          player.damageMultiplier = (player.damageMultiplier || 1.0) * 1.35;
+    if (player.hp > 20) {
+      this.consumed = true;
+      // Cobrar el tributo de sangre (20 HP)
+      player.takeDamage(20, room, { isProjectile: false });
 
-          if (player.ui) {
-            player.ui.showToast('🩸 ¡PACTO DE SANGRE CONSUMADO! Sacrificaste 25 HP por +35% Daño Permanente');
-            player.ui.updateHealth(player);
-          }
+      // Otorgar buff permanente de +35% Daño
+      player.damageMultiplier = (player.damageMultiplier || 1.0) * 1.35;
 
-          if (window.CombatSystem) {
-            window.CombatSystem.triggerScreenShake(15, 0.5);
-          }
-
-          for (let i = 0; i < 30; i++) {
-            const ang = (i * Math.PI * 2) / 30;
-            const spd = 90 + Math.random() * 140;
-            room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 5, '#dc2626', 0.65);
-          }
-        } else if (player.ui) {
-          player.ui.showToast('⚠️ ¡VIDA INSUFICIENTE! Necesitas más de 25 HP para sellar el pacto');
-        }
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('hurt');
       }
+      if (player.ui) {
+        player.ui.showToast('🩸 ¡PACTO DE SANGRE CONSUMADO! Sacrificaste 20 HP por +35% Daño Permanente');
+        player.ui.spawnFloatingText('+35% DAÑO PERMANENTE', '#ef4444', this.x, this.y - 30);
+        player.ui.updateHealth(player);
+      }
+
+      if (window.CombatSystem) {
+        window.CombatSystem.triggerScreenShake(15, 0.5);
+      }
+
+      for (let i = 0; i < 30; i++) {
+        const ang = (i * Math.PI * 2) / 30;
+        const spd = 90 + Math.random() * 140;
+        room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 5, '#dc2626', 0.65);
+      }
+    } else if (player.ui) {
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('hurt');
+      }
+      player.ui.showToast('⚠️ ¡VIDA INSUFICIENTE! Necesitas más de 20 HP para sellar el pacto');
+      player.ui.spawnFloatingText('⚠️ VIDA INSUFICIENTE', '#ef4444', this.x, this.y - 25);
     }
+  }
+
+  interact(player, room) {
+    this.activate(player, room);
   }
 
   draw(ctx) {
