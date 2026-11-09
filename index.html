@@ -3107,9 +3107,88 @@
       line-height: 1.35;
     }
 
+
+    /* Banner de sugerencia móvil en index.html */
+    .mobile-redirect-banner {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(12, 19, 34, 0.95);
+      border: 1.5px solid #38bdf8;
+      border-radius: 8px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 9999;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(56, 189, 248, 0.4);
+      backdrop-filter: blur(10px);
+      font-size: 0.85rem;
+      color: #f8fafc;
+      transition: opacity 0.3s ease;
+    }
+
+    .mobile-redirect-banner.hidden {
+      display: none !important;
+    }
+
+    .btn-go-mobile {
+      background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+      color: #060911;
+      font-weight: 900;
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+    }
+
+    .btn-go-mobile:active {
+      transform: scale(0.96);
+    }
+
+    .btn-close-banner {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 4px;
+    }
+
   </style>
 </head>
 <body>
+  <!-- Banner inteligente de sugerencia para usuarios móviles -->
+  <div id="mobile-redirect-banner" class="mobile-redirect-banner hidden">
+    <span>📱 ¿Jugás en celular? Probá la versión táctil horizontal optimizada.</span>
+    <a href="index_mobile.html" class="btn-go-mobile">🎮 ABRIR MÓVIL</a>
+    <button id="btn-close-mobile-banner" class="btn-close-banner" type="button" title="Cerrar aviso">✕</button>
+  </div>
+  <script>
+    (function() {
+      try {
+        var isTouchOrMobile = ('ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || window.innerWidth < 900);
+        var dismissed = sessionStorage.getItem('dismiss_mobile_banner');
+        if (isTouchOrMobile && !dismissed) {
+          var b = document.getElementById('mobile-redirect-banner');
+          if (b) b.classList.remove('hidden');
+          var closeBtn = document.getElementById('btn-close-mobile-banner');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', function() {
+              if (b) b.classList.add('hidden');
+              sessionStorage.setItem('dismiss_mobile_banner', '1');
+            });
+          }
+        }
+      } catch (e) {}
+    })();
+  </script>
+
   <!-- =====================================================================
        -1. CINEMÁTICA DE INTRODUCCIÓN (OVERLAY DOM v2.1)
        ===================================================================== -->

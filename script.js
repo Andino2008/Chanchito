@@ -266,6 +266,10 @@ class InputManager {
   }
 
   consumeDodgeTrigger() {
+    if (window.mobileTouchControls && window.mobileTouchControls.dodgeRequested) {
+      window.mobileTouchControls.dodgeRequested = false;
+      return true;
+    }
     if (this.dodgeTriggered) {
       this.dodgeTriggered = false;
       return true;
@@ -274,6 +278,12 @@ class InputManager {
   }
 
   getMovementVector() {
+    if (window.mobileTouchControls && window.mobileTouchControls.active && window.mobileTouchControls.moveVector) {
+      const mv = window.mobileTouchControls.moveVector;
+      if (mv.length > 0 || mv.x !== 0 || mv.y !== 0) {
+        return mv;
+      }
+    }
     let mx = 0;
     let my = 0;
     if (this.keys.has('KeyW')) my -= 1;
@@ -284,6 +294,15 @@ class InputManager {
   }
 
   getAimAndAttackState(player) {
+    if (window.mobileTouchControls && window.mobileTouchControls.active && window.mobileTouchControls.aimState && window.mobileTouchControls.aimState.active) {
+      return {
+        aimX: window.mobileTouchControls.aimState.aimX,
+        aimY: window.mobileTouchControls.aimState.aimY,
+        aimAngle: window.mobileTouchControls.aimState.aimAngle,
+        isAttacking: Boolean(window.mobileTouchControls.aimState.isAttacking),
+      };
+    }
+
     let ax = 0;
     let ay = 0;
     if (this.keys.has('ArrowUp')) ay -= 1;

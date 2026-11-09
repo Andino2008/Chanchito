@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="40" fill="#060911" />
+  <rect x="8" y="8" width="176" height="176" rx="32" fill="none" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.8" />
+  <!-- Glow Circle -->
+  <circle cx="96" cy="96" r="64" fill="#0c1322" stroke="#c084fc" stroke-width="3" />
+  <!-- Pig Silhouette / Stylized -->
+  <ellipse cx="96" cy="100" rx="42" ry="34" fill="#f472b6" />
+  <!-- Ears -->
+  <polygon points="68,75 58,55 78,65" fill="#ec4899" />
+  <polygon points="124,75 134,55 114,65" fill="#ec4899" />
+  <!-- Eyes -->
+  <ellipse cx="80" cy="94" rx="4" ry="7" fill="#090d16" />
+  <ellipse cx="112" cy="94" rx="4" ry="7" fill="#090d16" />
+  <circle cx="81" cy="92" r="1.5" fill="#ffffff" />
+  <circle cx="113" cy="92" r="1.5" fill="#ffffff" />
+  <!-- Snout -->
+  <ellipse cx="96" cy="108" rx="16" ry="11" fill="#fbcfe8" />
+  <ellipse cx="90" cy="108" rx="3" ry="4" fill="#be185d" />
+  <ellipse cx="102" cy="108" rx="3" ry="4" fill="#be185d" />
+  <!-- Cheeks -->
+  <circle cx="68" cy="104" r="6" fill="#f43f5e" opacity="0.4" />
+  <circle cx="124" cy="104" r="6" fill="#f43f5e" opacity="0.4" />
+  <!-- Crosshair accents -->
+  <line x1="96" y1="20" x2="96" y2="40" stroke="#facc15" stroke-width="3" stroke-linecap="round" />
+  <line x1="96" y1="152" x2="96" y2="172" stroke="#facc15" stroke-width="3" stroke-linecap="round" />
+  <line x1="20" y1="96" x2="40" y2="96" stroke="#facc15" stroke-width="3" stroke-linecap="round" />
+  <line x1="152" y1="96" x2="172" y2="96" stroke="#facc15" stroke-width="3" stroke-linecap="round" />
+</svg>
