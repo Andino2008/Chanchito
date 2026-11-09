@@ -93,6 +93,9 @@ class CombatSystem {
       soundManager.playProcedural('dash', { volume: 0.45 });
     }
 
+    if (window.PIG_ARCHETYPES && player.archetype && window.PIG_ARCHETYPES[player.archetype]?.onDodge) {
+      window.PIG_ARCHETYPES[player.archetype].onDodge(player, room);
+    }
     if (player.ui) player.ui.updateStats(player);
     return true;
   }

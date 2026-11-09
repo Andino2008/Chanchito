@@ -2400,13 +2400,16 @@ class MetaProgressionManager {
           shards: parsed.shards || 0,
           totalRuns: parsed.totalRuns || 0,
           totalKills: parsed.totalKills || 0,
-          talents: parsed.talents || {}
+          talents: parsed.talents || {},
+          unlockedArchetypes: parsed.unlockedArchetypes || ['classic'],
+          selectedArchetype: parsed.selectedArchetype || 'classic',
+          pendingBlessing: parsed.pendingBlessing || null
         };
       }
     } catch (e) {
       console.warn('Error cargando metaprogreso:', e);
     }
-    return { shards: 0, totalRuns: 0, totalKills: 0, talents: {} };
+    return { shards: 0, totalRuns: 0, totalKills: 0, talents: {}, unlockedArchetypes: ['classic'], selectedArchetype: 'classic', pendingBlessing: null };
   }
 
   save() {
@@ -2425,6 +2428,42 @@ class MetaProgressionManager {
     this.data.shards = Math.max(0, (this.data.shards || 0) + amount);
     this.save();
     return this.data.shards;
+  }
+
+  getUnlockedArchetypes() {
+    if (!this.data.unlockedArchetypes) this.data.unlockedArchetypes = ['classic'];
+    return this.data.unlockedArchetypes;
+  }
+
+  isArchetypeUnlocked(id) {
+    return this.getUnlockedArchetypes().includes(id);
+  }
+
+  getSelectedArchetype() {
+    return this.data.selectedArchetype || 'classic';
+  }
+
+  selectArchetype(id) {
+    if (!this.isArchetypeUnlocked(id)) return false;
+    this.data.selectedArchetype = id;
+    this.save();
+    return true;
+  }
+
+  unlockArchetype(id, cost) {
+    if (this.isArchetypeUnlocked(id)) return true;
+    if (this.data.shards < cost) return false;
+    this.data.shards -= cost;
+    if (!this.data.unlockedArchetypes) this.data.unlockedArchetypes = ['classic'];
+    this.data.unlockedArchetypes.push(id);
+    this.data.selectedArchetype = id;
+    this.save();
+    return true;
+  }
+
+  setPendingBlessing(blessing) {
+    this.data.pendingBlessing = blessing;
+    this.save();
   }
 
   getTalentLevel(talentId) {
@@ -7251,6 +7290,11 @@ class Player extends Entity {
       this.takeEnvironmentalDoT(this.poisonDps, dt, room);
     }
 
+    // Hook de arquetipo móvil por tick (v2.6)
+    if (window.PIG_ARCHETYPES && this.archetype && window.PIG_ARCHETYPES[this.archetype]?.onTick) {
+      window.PIG_ARCHETYPES[this.archetype].onTick(this, dt);
+    }
+
     const moveVec = input.getMovementVector();
     const aimState = input.getAimAndAttackState(this);
 
@@ -8119,6 +8163,8 @@ class Room {
     this.lockedChests = [];
     this.vaultChest = null;
     this.transmutationAnvil = null;
+    this.smugglerBriefcase = null;
+    this.merchantSafe = null;
     this.shopItems = [];
     this.shopSelectionMade = false;
     this.particles = [];
@@ -8699,6 +8745,12 @@ class Room {
     if (this.transmutationAnvil) {
       this.transmutationAnvil.update(dt, player, this);
     }
+    if (this.smugglerBriefcase) {
+      this.smugglerBriefcase.update(dt, player, this);
+    }
+    if (this.merchantSafe) {
+      this.merchantSafe.update(dt, player, this);
+    }
 
     for (const altar of this.altars) {
       altar.update(dt, player, this);
@@ -8897,6 +8949,12 @@ class Room {
       this.cleared = true;
       if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
         BrotherEye.onRoomExited(this, player, true);
+      }
+      if (window.PIG_ARCHETYPES && player.archetype && window.PIG_ARCHETYPES[player.archetype]?.onRoomCleared) {
+        window.PIG_ARCHETYPES[player.archetype].onRoomCleared(player, this);
+      }
+      if (window.RunSaveManager && window.activeGameInstance) {
+        window.RunSaveManager.save(window.activeGameInstance);
       }
     }
 
@@ -9247,6 +9305,46 @@ class Room {
       }
     }
 
+    // 8. Maletín del Contrabandista (StartRoom)
+    if (this.smugglerBriefcase && !this.smugglerBriefcase.opened) {
+      const d = Math.hypot(player.x - this.smugglerBriefcase.x, player.y - this.smugglerBriefcase.y);
+      if (d <= 65 && d < closestDist) {
+        closestDist = d;
+        closest = {
+          entity: this.smugglerBriefcase,
+          x: this.smugglerBriefcase.x,
+          y: this.smugglerBriefcase.y,
+          title: '💼 MALETÍN DEL CONTRABANDISTA',
+          desc: 'Kit Express (+1 Reliquia, +35 🪙, +1 🔑, +25 🛡️)',
+          cost: '🎬 Anuncio / 15 💎',
+          costColor: '#34d399',
+          interact: (p, r) => {
+            this.smugglerBriefcase.interact(p, r);
+          }
+        };
+      }
+    }
+
+    // 9. Caja Fuerte del Mercader (ShopRoom)
+    if (this.merchantSafe && !this.merchantSafe.opened) {
+      const d = Math.hypot(player.x - this.merchantSafe.x, player.y - this.merchantSafe.y);
+      if (d <= 65 && d < closestDist) {
+        closestDist = d;
+        closest = {
+          entity: this.merchantSafe,
+          x: this.merchantSafe.x,
+          y: this.merchantSafe.y,
+          title: '💰 CAJA FUERTE DEL MERCADER',
+          desc: 'Soborno de Tienda (+45 🪙 Oro / +1 🔑 Llave)',
+          cost: '🎬 Anuncio / 10 💎',
+          costColor: '#facc15',
+          interact: (p, r) => {
+            this.merchantSafe.interact(p, r);
+          }
+        };
+      }
+    }
+
     return closest;
   }
 
@@ -9334,6 +9432,8 @@ class Room {
     for (const lc of this.lockedChests) lc.draw(ctx);
     if (this.vaultChest) this.vaultChest.draw(ctx);
     if (this.transmutationAnvil) this.transmutationAnvil.draw(ctx);
+    if (this.smugglerBriefcase) this.smugglerBriefcase.draw(ctx);
+    if (this.merchantSafe) this.merchantSafe.draw(ctx);
 
     if (this.isExitRoom) {
       this.drawPortalVortex(
@@ -9516,6 +9616,9 @@ class StartRoom extends Room {
       this.relicChests.push(new RelicChest(ROOM_BOUNDS.centerX + 65, ROOM_BOUNDS.centerY));
     } else {
       this.chest = new Chest(ROOM_BOUNDS.centerX, ROOM_BOUNDS.centerY);
+    }
+    if (typeof SmugglerBriefcase !== 'undefined') {
+      this.smugglerBriefcase = new SmugglerBriefcase(ROOM_BOUNDS.centerX - 130, ROOM_BOUNDS.centerY + 55);
     }
   }
 
@@ -9751,6 +9854,9 @@ class ShopRoom extends Room {
     this.vaultChest = new VaultChest(ROOM_BOUNDS.centerX - 130, ROOM_BOUNDS.bottom - 75);
     if (typeof TransmutationAnvil !== 'undefined') {
       this.transmutationAnvil = new TransmutationAnvil(ROOM_BOUNDS.centerX + 130, ROOM_BOUNDS.bottom - 75);
+    }
+    if (typeof MerchantSafe !== 'undefined') {
+      this.merchantSafe = new MerchantSafe(ROOM_BOUNDS.centerX, ROOM_BOUNDS.bottom - 75);
     }
     this.setupShopItems();
   }
@@ -10516,6 +10622,7 @@ class UIManager {
       if (this.dom.sanctuaryModal) {
         this.dom.sanctuaryModal.classList.remove('hidden');
         this.renderSanctuaryTalents();
+        this.renderSanctuaryArchetypes();
       }
     };
     const closeSanctuary = () => {
@@ -10529,12 +10636,194 @@ class UIManager {
     if (this.dom.btnOverlaySanctuary) this.dom.btnOverlaySanctuary.addEventListener('click', openSanctuary);
     if (this.dom.btnSanctuaryClose) this.dom.btnSanctuaryClose.addEventListener('click', closeSanctuary);
 
+    // Botón Suministro Rápido de Gemas con Anuncio en Santuario
+    const btnQuickAdGems = document.getElementById('btn-sanctuary-quick-ad-gems');
+    if (btnQuickAdGems) {
+      btnQuickAdGems.addEventListener('click', () => {
+        if (window.AdManager) {
+          window.AdManager.showRewardedAd({
+            title: 'SUMINISTRO RÁPIDO DE GEMAS',
+            rewardDesc: '+35 Gemas del Abismo',
+            onReward: () => {
+              window.metaProgression.addShards(35);
+              this.updateShards();
+              this.renderSanctuaryTalents();
+              this.renderSanctuaryArchetypes();
+            }
+          });
+        }
+      });
+    }
+
+    // Tabs del Santuario (v2.6)
+    const tabTalents = document.getElementById('tab-btn-talents');
+    const tabArchetypes = document.getElementById('tab-btn-archetypes');
+    const tabOracle = document.getElementById('tab-btn-oracle');
+    const contentTalents = document.getElementById('sanctuary-tab-talents');
+    const contentArchetypes = document.getElementById('sanctuary-tab-archetypes');
+    const contentOracle = document.getElementById('sanctuary-tab-oracle');
+
+    const switchTab = (tabName) => {
+      if (tabTalents) tabTalents.classList.toggle('active', tabName === 'talents');
+      if (tabArchetypes) tabArchetypes.classList.toggle('active', tabName === 'archetypes');
+      if (tabOracle) tabOracle.classList.toggle('active', tabName === 'oracle');
+
+      if (contentTalents) contentTalents.classList.toggle('hidden', tabName !== 'talents');
+      if (contentArchetypes) contentArchetypes.classList.toggle('hidden', tabName !== 'archetypes');
+      if (contentOracle) contentOracle.classList.toggle('hidden', tabName !== 'oracle');
+
+      if (tabName === 'talents') this.renderSanctuaryTalents();
+      if (tabName === 'archetypes') this.renderSanctuaryArchetypes();
+    };
+
+    if (tabTalents) tabTalents.addEventListener('click', () => switchTab('talents'));
+    if (tabArchetypes) tabArchetypes.addEventListener('click', () => switchTab('archetypes'));
+    if (tabOracle) tabOracle.addEventListener('click', () => switchTab('oracle'));
+
+    // Botones del Oráculo del Abismo
+    const btnOracleAd = document.getElementById('btn-oracle-spin-ad');
+    const btnOracleGems = document.getElementById('btn-oracle-spin-gems');
+    const statusOracle = document.getElementById('oracle-reward-status');
+
+    if (btnOracleAd) {
+      btnOracleAd.addEventListener('click', () => {
+        if (window.OracleManager) {
+          window.OracleManager.spin('AD', (reward) => {
+            if (statusOracle) statusOracle.textContent = `✨ ${reward.title}: ${reward.desc}`;
+            this.updateShards();
+          });
+        }
+      });
+    }
+    if (btnOracleGems) {
+      btnOracleGems.addEventListener('click', () => {
+        if (window.OracleManager) {
+          window.OracleManager.spin('GEMS', (reward) => {
+            if (statusOracle) statusOracle.textContent = `✨ ${reward.title}: ${reward.desc}`;
+            this.updateShards();
+          });
+        }
+      });
+    }
+
+    // Botón Continuar Partida Suspendida ("Modo Colectivo")
+    const btnContinue = document.getElementById('btn-menu-continue');
+    if (btnContinue) {
+      btnContinue.addEventListener('click', () => {
+        if (window.RunSaveManager) {
+          if (!window.activeGameInstance) {
+            const canvas = document.getElementById('gameCanvas');
+            if (canvas) {
+              window.activeGameInstance = new Game(canvas);
+            }
+          }
+          if (window.activeGameInstance) {
+            const ok = window.RunSaveManager.load(window.activeGameInstance);
+            if (!ok) {
+              this.showToast('⚠️ No se pudo reanudar la partida.');
+            }
+          }
+        }
+      });
+    }
+
+    // Botón Guardar y Salir en el Menú de Pausa
+    const btnSaveQuit = document.getElementById('btn-pause-save-quit');
+    if (btnSaveQuit) {
+      btnSaveQuit.addEventListener('click', () => {
+        if (window.RunSaveManager && window.activeGameInstance) {
+          window.RunSaveManager.save(window.activeGameInstance);
+          this.showToast('💾 ¡Partida guardada con éxito!');
+          window.activeGameInstance.togglePause(false);
+          const mainMenu = document.getElementById('main-menu');
+          if (mainMenu) {
+            mainMenu.classList.remove('hidden');
+            mainMenu.style.display = 'flex';
+          }
+          const appShell = document.getElementById('app-shell');
+          if (appShell) {
+            appShell.classList.add('hidden');
+            appShell.style.display = 'none';
+          }
+          window.RunSaveManager.updateContinueButtonUI();
+        }
+      });
+    }
+
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && this.dom.sanctuaryModal && !this.dom.sanctuaryModal.classList.contains('hidden')) {
         e.stopPropagation();
         closeSanctuary();
       }
     });
+  }
+
+  renderSanctuaryArchetypes() {
+    const grid = document.getElementById('sanctuary-archetype-grid');
+    if (!grid || !window.PIG_ARCHETYPES || !window.metaProgression) return;
+    grid.innerHTML = '';
+
+    const mp = window.metaProgression;
+    const currentArch = mp.getSelectedArchetype();
+
+    for (const key in window.PIG_ARCHETYPES) {
+      const arch = window.PIG_ARCHETYPES[key];
+      const isUnlocked = mp.isArchetypeUnlocked(key);
+      const isSelected = (currentArch === key);
+      const canAfford = mp.getShards() >= arch.cost;
+
+      const card = document.createElement('div');
+      card.className = `archetype-card ${isSelected ? 'selected' : ''} ${!isUnlocked ? 'locked' : ''}`;
+
+      card.innerHTML = `
+        <div>
+          <div class="archetype-header-row">
+            <span class="archetype-name" style="color: ${arch.color};">
+              <span>${arch.icon}</span>
+              <span>${arch.name.toUpperCase()}</span>
+            </span>
+            <span class="archetype-badge" style="color: ${arch.color}; border: 1px solid ${arch.color};">${arch.badge}</span>
+          </div>
+          <div class="archetype-desc" style="margin-top: 8px;">${arch.desc}</div>
+        </div>
+        <div style="margin-top: 10px;">
+          ${isSelected
+            ? `<button class="btn-archetype-select" style="background: rgba(56, 189, 248, 0.25); border: 1.5px solid #38bdf8; color: #bae6fd;" disabled>★ ARQUETIPO ACTIVO ★</button>`
+            : (isUnlocked
+              ? `<button class="btn-archetype-select btn-select-arch" data-id="${key}" style="background: rgba(16, 185, 129, 0.25); border: 1.5px solid #10b981; color: #6ee7b7;">EQUIPAR CLASE</button>`
+              : `<button class="btn-archetype-select btn-unlock-arch" data-id="${key}" data-cost="${arch.cost}" ${canAfford ? '' : 'disabled'} style="background: rgba(168, 85, 247, 0.25); border: 1.5px solid #a855f7; color: #f3e8ff;">
+                  DESBLOQUEAR (${arch.cost} 💎)
+                </button>`
+            )
+          }
+        </div>
+      `;
+
+      const btnSelect = card.querySelector('.btn-select-arch');
+      if (btnSelect) {
+        btnSelect.addEventListener('click', () => {
+          mp.selectArchetype(key);
+          soundManager.playProcedural('pedestal', { volume: 0.8 });
+          this.renderSanctuaryArchetypes();
+          this.showToast(`🐷 ¡Arquetipo seleccionado: ${arch.name}!`);
+        });
+      }
+
+      const btnUnlock = card.querySelector('.btn-unlock-arch');
+      if (btnUnlock && canAfford) {
+        btnUnlock.addEventListener('click', () => {
+          if (mp.unlockArchetype(key, arch.cost)) {
+            soundManager.playProcedural('pedestal', { volume: 0.9 });
+            soundManager.playProcedural('key', { volume: 0.85 });
+            this.updateShards();
+            this.renderSanctuaryArchetypes();
+            this.showToast(`🎉 ¡Clase desbloqueada: ${arch.name}!`);
+          }
+        });
+      }
+
+      grid.appendChild(card);
+    }
   }
 
   updateShards(runShards, totalShards) {
@@ -11484,8 +11773,26 @@ class Game {
     this.player = new Player(ROOM_BOUNDS.centerX, ROOM_BOUNDS.centerY + 75, this.ui);
     this.ui.updateKeys(this.player.keys);
 
+    // Limpiar guardado previo al iniciar una nueva incursion desde cero ("Modo Colectivo")
+    if (window.RunSaveManager && !window.RunSaveManager.isRestoring) {
+      window.RunSaveManager.clear();
+    }
+
     // Aplicar talentos permanentes comprados en el Santuario
     window.metaProgression.applyAllTalentsToPlayer(this.player);
+
+    // Aplicar arquetipo móvil seleccionado (v2.6)
+    if (window.PIG_ARCHETYPES && window.metaProgression) {
+      const archId = window.metaProgression.getSelectedArchetype();
+      const arch = window.PIG_ARCHETYPES[archId] || window.PIG_ARCHETYPES.classic;
+      arch.apply(this.player);
+    }
+
+    // Consumir bendición pendiente del Oráculo del Abismo si existe
+    if (window.OracleManager) {
+      window.OracleManager.consumeBlessing(this.player, this);
+    }
+
     this.player.itemManager.applyPassiveStats();
     this.player.hp = this.player.maxHp;
     this.ui.updateShards(0, window.metaProgression.getShards());
@@ -11549,6 +11856,11 @@ class Game {
       );
     } else {
       this.ui.showToast('Abre el Cofre Elemental en el centro de la sala inicial');
+    }
+
+    // Auto-guardado instantáneo de la partida al iniciar ("Modo Colectivo")
+    if (window.RunSaveManager && !window.RunSaveManager.isRestoring) {
+      window.RunSaveManager.save(this);
     }
   }
 
@@ -11659,6 +11971,9 @@ class Game {
     this.ui.showToast(
       `¡CICLO NG+ ${ngPlusLevel} INICIADO (Enemigos x${1 + ngPlusLevel})! ${altarNameMap[altarType] || ''}`
     );
+    if (window.RunSaveManager) {
+      window.RunSaveManager.save(this);
+    }
   }
 
   handleWeaponModeToggle() {
@@ -11787,6 +12102,11 @@ class Game {
         '[SALA DE PELIGROS] ¡Cuidado con los Pinchos, Zonas de Fuego y Charcos Venenosos! Dañan a todos'
       );
     }
+
+    // Auto-guardado instantáneo al transicionar de sala ("Modo Colectivo")
+    if (window.RunSaveManager) {
+      window.RunSaveManager.save(this);
+    }
   }
 
   checkPortalTransitions() {
@@ -11893,6 +12213,9 @@ class Game {
       this.ui.showToast(
         `¡Avanzaste a Sección ${this.currentSection} - Nivel ${this.currentLevel}! (+25 HP restaurados)`
       );
+      if (window.RunSaveManager) {
+        window.RunSaveManager.save(this);
+      }
     }
   }
 
@@ -11920,7 +12243,19 @@ class Game {
     if (this.player.hp <= 0) {
       const revived = this.player.itemManager.onDeath(this.currentRoom);
       if (!revived && this.player.hp <= 0) {
+        if (!this.player.hasUsedAbyssalRevive && window.ReviveManager) {
+          window.ReviveManager.promptRevive(this, () => {
+            this.state = 'GAME_OVER';
+            if (window.RunSaveManager) window.RunSaveManager.clear();
+            if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+              BrotherEye.onPlayerDeath();
+            }
+            this.ui.setOverlayState('GAME_OVER', this);
+          });
+          return;
+        }
         this.state = 'GAME_OVER';
+        if (window.RunSaveManager) window.RunSaveManager.clear();
         if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
           BrotherEye.onPlayerDeath();
         }
@@ -12155,6 +12490,10 @@ function finishCinematic() {
 
   // Reproducir música de intro simultáneamente con la pantalla del Menú Principal
   playIntroMusic();
+
+  if (window.RunSaveManager) {
+    window.RunSaveManager.updateContinueButtonUI();
+  }
 }
 
 function startGame(mortalMode, startingNgLevel) {

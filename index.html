@@ -1369,6 +1369,457 @@
       border-color: #94a3b8;
     }
 
+    /* =========================================================================
+       SISTEMA MÓVIL, ARQUETIPOS Y MONETIZACIÓN ÉTICA (v2.6)
+       ========================================================================= */
+    .sanctuary-nav-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 10px 22px 0 22px;
+      background: rgba(9, 15, 29, 0.6);
+      border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+    }
+    .sanctuary-tab-btn {
+      padding: 8px 16px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .sanctuary-tab-btn:hover {
+      color: #f3e8ff;
+    }
+    .sanctuary-tab-btn.active {
+      color: #c084fc;
+      border-bottom-color: #c084fc;
+      background: rgba(168, 85, 247, 0.1);
+    }
+    .sanctuary-claim-ad-btn {
+      padding: 6px 12px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
+      border: 1px solid #10b981;
+      border-radius: 6px;
+      color: #6ee7b7;
+      font-size: 0.76rem;
+      font-weight: 900;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sanctuary-claim-ad-btn:hover {
+      background: rgba(16, 185, 129, 0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    }
+
+    /* Pestaña de Arquetipos */
+    .sanctuary-archetype-grid {
+      padding: 18px 22px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+      overflow-y: auto;
+      max-height: 58vh;
+    }
+    .archetype-card {
+      background: rgba(17, 28, 48, 0.7);
+      border: 1.5px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      transition: all 0.2s ease;
+    }
+    .archetype-card.selected {
+      border-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.12);
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+    }
+    .archetype-card.locked {
+      opacity: 0.85;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .archetype-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .archetype-name {
+      font-weight: 900;
+      font-size: 0.95rem;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .archetype-badge {
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .archetype-desc {
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      line-height: 1.35;
+    }
+    .btn-archetype-select {
+      width: 100%;
+      padding: 7px;
+      border-radius: 6px;
+      font-weight: 900;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+    }
+
+    /* Pestaña de Oráculo */
+    .sanctuary-oracle-container {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      max-height: 58vh;
+      overflow-y: auto;
+    }
+    .oracle-wheel-card {
+      width: 480px;
+      max-width: 90vw;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1.5px solid rgba(168, 85, 247, 0.4);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 0 25px rgba(168, 85, 247, 0.2);
+    }
+    .oracle-last-reward-box {
+      width: 100%;
+      padding: 12px;
+      background: rgba(9, 15, 29, 0.9);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 8px;
+    }
+    .oracle-actions-row {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+    }
+    .btn-oracle-spin {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 900;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.15s ease;
+    }
+
+    /* Modal de Segunda Oportunidad Abisal */
+    .revive-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.92);
+      backdrop-filter: blur(16px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 120;
+    }
+    .revive-modal-overlay.hidden {
+      display: none !important;
+    }
+    .revive-card {
+      width: 480px;
+      max-width: 92vw;
+      background: rgba(15, 23, 42, 0.96);
+      border: 2px solid #ef4444;
+      border-radius: 14px;
+      padding: 26px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      text-align: center;
+      box-shadow: 0 0 40px rgba(239, 68, 68, 0.4);
+    }
+    .revive-icon {
+      font-size: 2.4rem;
+      animation: pulseRevive 1.2s infinite alternate;
+    }
+    @keyframes pulseRevive {
+      from { transform: scale(1); filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.4)); }
+      to { transform: scale(1.1); filter: drop-shadow(0 0 25px rgba(239, 68, 68, 0.9)); }
+    }
+    .revive-title {
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: #f87171;
+      letter-spacing: 2px;
+    }
+    .revive-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+    .revive-perks-box {
+      width: 100%;
+      background: rgba(9, 15, 29, 0.85);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+      font-size: 0.78rem;
+      color: #f1f5f9;
+    }
+    .revive-perk-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .revive-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+    .btn-revive-action {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-weight: 900;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.15s ease;
+    }
+    .btn-revive-ad {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.5));
+      border: 1.5px solid #10b981;
+      color: #6ee7b7;
+    }
+    .btn-revive-ad:hover {
+      background: rgba(16, 185, 129, 0.5);
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+    }
+    .btn-revive-gems {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(126, 34, 206, 0.5));
+      border: 1.5px solid #a855f7;
+      color: #f3e8ff;
+    }
+    .btn-revive-gems:hover:not(:disabled) {
+      background: rgba(168, 85, 247, 0.5);
+      box-shadow: 0 0 16px rgba(168, 85, 247, 0.5);
+    }
+    .btn-revive-giveup {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      color: #94a3b8;
+      font-size: 0.75rem;
+      margin-top: 4px;
+    }
+    .btn-revive-giveup:hover {
+      background: rgba(51, 65, 85, 0.8);
+      color: #f1f5f9;
+    }
+
+    /* Modal de Simulación de Anuncios */
+    .ad-sim-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.95);
+      backdrop-filter: blur(14px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 150;
+    }
+    .ad-sim-modal-overlay.hidden {
+      display: none !important;
+    }
+    .ad-sim-card {
+      width: 420px;
+      max-width: 90vw;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1.5px solid #38bdf8;
+      border-radius: 12px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.3);
+    }
+    .ad-sim-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .ad-badge {
+      background: rgba(56, 189, 248, 0.2);
+      border: 1px solid #38bdf8;
+      color: #38bdf8;
+      font-size: 0.68rem;
+      font-weight: 900;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+    }
+    .ad-timer {
+      font-family: var(--font-mono);
+      font-weight: 900;
+      color: #facc15;
+    }
+    .ad-sim-content {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .ad-sim-icon {
+      font-size: 2.2rem;
+    }
+    .ad-sim-title {
+      font-size: 1.1rem;
+      font-weight: 900;
+      color: #f8fafc;
+      letter-spacing: 1px;
+    }
+    .ad-sim-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .ad-sim-progress-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(30, 41, 59, 0.8);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .ad-sim-progress-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #4ade80);
+      transition: width 0.05s linear;
+    }
+    .ad-sim-footer {
+      display: flex;
+      justify-content: center;
+    }
+    .ad-sim-cancel-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    .ad-sim-cancel-btn:hover {
+      color: #ef4444;
+    }
+
+    /* Modal de Elección Rápida (Maletín / Caja Fuerte) */
+    .mobile-choice-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.88);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 110;
+    }
+    .mobile-choice-modal-overlay.hidden {
+      display: none !important;
+    }
+    .mobile-choice-card {
+      width: 440px;
+      max-width: 90vw;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1.5px solid #10b981;
+      border-radius: 12px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+    }
+    .choice-modal-title {
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: #34d399;
+      letter-spacing: 1px;
+    }
+    .choice-modal-desc {
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+    .choice-modal-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn-choice-action {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      font-weight: 900;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-choice-ad {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.5));
+      border: 1.5px solid #10b981;
+      color: #6ee7b7;
+    }
+    .btn-choice-ad:hover {
+      background: rgba(16, 185, 129, 0.5);
+    }
+    .btn-choice-gems {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(126, 34, 206, 0.5));
+      border: 1.5px solid #a855f7;
+      color: #f3e8ff;
+    }
+    .btn-choice-gems:hover:not(:disabled) {
+      background: rgba(168, 85, 247, 0.5);
+    }
+    .btn-choice-close {
+      background: transparent;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: var(--text-dim);
+      font-size: 0.75rem;
+    }
+    .btn-choice-close:hover {
+      background: rgba(51, 65, 85, 0.5);
+      color: #f1f5f9;
+    }
+
     /* Game Over / Victory Modal Renovado */
     .overlay-card-box {
       width: 520px;
@@ -2696,6 +3147,12 @@
     <div class="menu-version-badge">v2.1</div>
 
     <div class="menu-content">
+      <!-- Botón Continuar Partida Suspendida ("Modo Colectivo") -->
+      <button id="btn-menu-continue" class="menu-mode-btn btn-continue hidden" type="button" style="background: rgba(16, 185, 129, 0.2); border: 2px solid #10b981; margin-bottom: 12px; width: 100%;">
+        <span class="mode-title" style="color: #6ee7b7;">▶️ CONTINUAR PARTIDA</span>
+        <span class="mode-desc" id="menu-continue-desc">Reanudar incursión suspendida</span>
+      </button>
+
       <!-- Botón Gigante JUGAR -->
       <button id="btn-menu-play" class="btn-giant-play" type="button">JUGAR</button>
 
@@ -3058,6 +3515,7 @@
       <!-- Botones de Acción de Pausa -->
       <div class="pause-actions">
         <button id="btn-pause-resume" class="btn-pause-action btn-resume" type="button">CONTINUAR [ESC]</button>
+        <button id="btn-pause-save-quit" class="btn-pause-action btn-save-quit" type="button" style="background: rgba(56, 189, 248, 0.25); border: 1px solid #38bdf8; color: #bae6fd;">💾 GUARDAR Y SALIR</button>
         <button id="btn-pause-sanctuary" class="btn-pause-action" type="button" style="background: rgba(168, 85, 247, 0.25); border: 1px solid #a855f7; color: #f3e8ff;">🏛️ SANTUARIO DE TALENTOS</button>
         <button id="btn-pause-restart" class="btn-pause-action btn-restart" type="button">REINICIAR INCURSIÓN [R]</button>
       </div>
@@ -3075,22 +3533,138 @@
           <span style="font-size: 1.8rem;">🏛️</span>
           <div>
             <div class="sanctuary-heading">SANTUARIO DEL ABISMO // META-PROGRESO</div>
-            <div class="sanctuary-subheading">Mejoras permanentes guardadas en tu cuenta que persisten tras la muerte.</div>
+            <div class="sanctuary-subheading">Mejoras permanentes, clases de cerdito y oráculo que persisten tras la muerte.</div>
           </div>
         </div>
-        <div class="sanctuary-vault-badge">
-          <span>GEMAS:</span>
-          <span id="sanctuary-vault-num" class="sanctuary-vault-num">0 💎</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-sanctuary-quick-ad-gems" class="sanctuary-claim-ad-btn" type="button" title="Ver anuncio de 2s para recibir +35 Gemas">🎬 +35 💎 SUMINISTRO</button>
+          <div class="sanctuary-vault-badge">
+            <span>GEMAS:</span>
+            <span id="sanctuary-vault-num" class="sanctuary-vault-num">0 💎</span>
+          </div>
         </div>
       </div>
 
-      <div class="sanctuary-talent-grid" id="sanctuary-talent-grid">
-        <!-- Renderizado dinámicamente con las tarjetas de talentos -->
+      <!-- Selector de Pestañas del Santuario (v2.6) -->
+      <div class="sanctuary-nav-tabs">
+        <button id="tab-btn-talents" class="sanctuary-tab-btn active" type="button">🔮 TALENTOS PERMANENTES</button>
+        <button id="tab-btn-archetypes" class="sanctuary-tab-btn" type="button">🐷 CLASES DE CERDITO</button>
+        <button id="tab-btn-oracle" class="sanctuary-tab-btn" type="button">🎡 ORÁCULO DEL ABISMO</button>
+      </div>
+
+      <!-- Contenedor 1: Talentos -->
+      <div id="sanctuary-tab-talents" class="sanctuary-tab-content">
+        <div class="sanctuary-talent-grid" id="sanctuary-talent-grid">
+          <!-- Renderizado dinámicamente con las tarjetas de talentos -->
+        </div>
+      </div>
+
+      <!-- Contenedor 2: Arquetipos / Clases -->
+      <div id="sanctuary-tab-archetypes" class="sanctuary-tab-content hidden">
+        <div class="sanctuary-archetype-grid" id="sanctuary-archetype-grid">
+          <!-- Renderizado dinámicamente con las clases desbloqueables -->
+        </div>
+      </div>
+
+      <!-- Contenedor 3: Oráculo del Abismo -->
+      <div id="sanctuary-tab-oracle" class="sanctuary-tab-content hidden">
+        <div class="sanctuary-oracle-container" id="sanctuary-oracle-container">
+          <div class="oracle-wheel-card">
+            <div style="font-size: 2.2rem;">🎡✨</div>
+            <div style="font-size: 1.2rem; font-weight: 900; color: #c084fc; letter-spacing: 1px;">EL ORÁCULO DEL ABISMO</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); max-width: 380px;">
+              Consulta a las fuerzas arcanas para recibir suministros inmediatos, jackpots de gemas o bendiciones poderosas para tu próxima incursión.
+            </div>
+            <div id="oracle-last-reward-box" class="oracle-last-reward-box">
+              <span id="oracle-reward-status" style="font-size: 0.8rem; color: #38bdf8; font-weight: 800;">Tira la ruleta mística para bendecir tu próxima partida.</span>
+            </div>
+            <div class="oracle-actions-row">
+              <button id="btn-oracle-spin-ad" class="btn-oracle-spin" type="button" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.4)); border: 1.5px solid #10b981; color: #6ee7b7;">
+                <span>🎬 TIRADA CON ANUNCIO</span>
+                <span style="font-size: 0.65rem; opacity: 0.85;">(GRATIS)</span>
+              </button>
+              <button id="btn-oracle-spin-gems" class="btn-oracle-spin" type="button" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(126, 34, 206, 0.4)); border: 1.5px solid #a855f7; color: #f3e8ff;">
+                <span>💎 TIRADA MÍSTICA</span>
+                <span style="font-size: 0.65rem; opacity: 0.85;">(25 GEMAS)</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="sanctuary-bottom-bar">
-        <div class="sanctuary-tip">✨ Tus talentos se aplican automáticamente al iniciar cada nueva incursión.</div>
+        <div class="sanctuary-tip">✨ Tus talentos y clase seleccionada se aplican automáticamente al iniciar cada nueva incursión.</div>
         <button class="btn-sanctuary-close" id="btn-sanctuary-close">CERRAR SANTUARIO</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       SEGUNDA OPORTUNIDAD ABISAL: MODAL DE RESURRECCIÓN (1 POR RUN)
+       ===================================================================== -->
+  <div class="revive-modal-overlay hidden" id="revive-modal">
+    <div class="revive-card">
+      <div class="revive-icon">💀⚡</div>
+      <div class="revive-title">¿RECHAZAR LA MUERTE?</div>
+      <div class="revive-subtitle">El Abismo te concede una última oportunidad en esta incursión (1 por partida).</div>
+
+      <div class="revive-perks-box">
+        <div class="revive-perk-row"><span>❤️</span><span>Revive con el <b>60% de Vida Máxima</b></span></div>
+        <div class="revive-perk-row"><span>🛡️</span><span><b>3 segundos</b> de inmunidad absoluta</span></div>
+        <div class="revive-perk-row"><span>💥</span><span><b>Supernova Abisal:</b> destruye proyectiles y aturde enemigos</span></div>
+      </div>
+
+      <div class="revive-actions">
+        <button id="btn-revive-ad" class="btn-revive-action btn-revive-ad" type="button">
+          <span>🎬 VER ANUNCIO</span>
+          <span style="font-size: 0.72rem; opacity: 0.9;">(REVIVIR GRATIS)</span>
+        </button>
+        <button id="btn-revive-gems" class="btn-revive-action btn-revive-gems" type="button">
+          <span>💎 USAR 30 GEMAS</span>
+          <span style="font-size: 0.72rem; opacity: 0.9;" id="revive-gems-cost-text">(30 💎)</span>
+        </button>
+        <button id="btn-revive-giveup" class="btn-revive-action btn-revive-giveup" type="button">
+          <span>💀 ACEPTAR EL DESTINO</span>
+          <span style="font-size: 0.68rem; opacity: 0.8;">(TERMINAR PARTIDA)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       MODAL DE SIMULACIÓN DE ANUNCIOS RECOMPENSADOS (2.0s)
+       ===================================================================== -->
+  <div class="ad-sim-modal-overlay hidden" id="ad-simulator-modal">
+    <div class="ad-sim-card">
+      <div class="ad-sim-header">
+        <span class="ad-badge">PATROCINADO</span>
+        <span id="ad-sim-timer" class="ad-timer">2.0s</span>
+      </div>
+      <div class="ad-sim-content">
+        <div class="ad-sim-icon">🎬</div>
+        <div id="ad-sim-title" class="ad-sim-title">ANUNCIO BONIFICADO</div>
+        <div id="ad-sim-desc" class="ad-sim-desc">Cargando bonificación...</div>
+      </div>
+      <div class="ad-sim-progress-track">
+        <div id="ad-sim-progress-fill" class="ad-sim-progress-fill"></div>
+      </div>
+      <div class="ad-sim-footer">
+        <button id="ad-sim-btn-cancel" class="ad-sim-cancel-btn" type="button">Cerrar / Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       MODAL DE ELECCIÓN RÁPIDA: ANUNCIO VS GEMAS (MALETÍN / CAJA FUERTE)
+       ===================================================================== -->
+  <div class="mobile-choice-modal-overlay hidden" id="mobile-choice-modal">
+    <div class="mobile-choice-card">
+      <div id="choice-modal-title" class="choice-modal-title">💼 SUMINISTRO MÓVIL</div>
+      <div id="choice-modal-desc" class="choice-modal-desc">Descripción del suministro...</div>
+      <div class="choice-modal-actions">
+        <button id="choice-modal-btn-ad" class="btn-choice-action btn-choice-ad" type="button">🎬 ABRIR CON ANUNCIO</button>
+        <button id="choice-modal-btn-gems" class="btn-choice-action btn-choice-gems" type="button">💎 ABRIR CON GEMAS</button>
+        <button id="choice-modal-btn-close" class="btn-choice-action btn-choice-close" type="button">CANCELAR</button>
       </div>
     </div>
   </div>
@@ -3199,7 +3773,9 @@
   <script src="BrotherEye.js"></script>
   <!-- 9. Consola de Diagnóstico y Telemetría en Vivo -->
   <script src="dev_console.js"></script>
-  <!-- 8. Motor principal y ejecutor del juego -->
+  <!-- 10. Sistema de Monetización Ética, Bucle Móvil y Arquetipos (v2.6) -->
+  <script src="mobile_features.js"></script>
+  <!-- 11. Motor principal y ejecutor del juego -->
   <script src="script.js"></script>
 </body>
 </html>
