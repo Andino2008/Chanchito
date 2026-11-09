@@ -3145,61 +3145,63 @@
     }
 
     /* =========================================================================
-       REFINAMIENTO RADICAL DEL HUD MÓVIL (COMPACTO, LIMPIO Y ERGONÓMICO v2.7)
+       ARQUITECTURA ULTRA-LIMPIA Y ERGONÓMICA DE PANTALLA MÓVIL (v2.8)
        ========================================================================= */
 
-    /* Ocultar botones y banners no requeridos en móvil */
+    /* Ocultar elementos innecesarios que bloquean la visión de la arena */
     .dev-console-toggle-btn,
     .dev-console-pill,
     #hud-level-banner,
-    .hud-dodge-card {
-      display: none !important;
+    .hud-dodge-card,
+    .hud-bottom-dock,
+    #hud-bottom {
+      display: none !important; /* Despeja 100% la parte superior de la arena */
     }
 
-    /* 1. TOP-LEFT: Integridad Vital y Recursos (Super Compacto y Translúcido) */
+    /* 1. TOP-LEFT: Integridad Vital y Recursos (Micro-barra que NO tapa la esquina) */
     .hud-card-top-left {
-      top: 6px !important;
-      left: 6px !important;
+      top: 4px !important;
+      left: 4px !important;
       min-width: unset !important;
       width: auto !important;
-      padding: 4px 8px !important;
+      padding: 3px 6px !important;
       gap: 2px !important;
-      background: rgba(12, 19, 34, 0.65) !important;
-      backdrop-filter: blur(8px) !important;
-      border: 1px solid rgba(56, 189, 248, 0.2) !important;
-      border-radius: 6px !important;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+      background: rgba(12, 19, 34, 0.45) !important;
+      backdrop-filter: blur(4px) !important;
+      border: 1px solid rgba(56, 189, 248, 0.18) !important;
+      border-radius: 5px !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
     }
 
     .hp-header-row {
-      font-size: 0.6rem !important;
-      gap: 4px !important;
+      display: none !important;
     }
 
     .hp-sub-row {
-      font-size: 0.6rem !important;
+      font-size: 0.58rem !important;
+      gap: 4px !important;
     }
 
     .hp-bar-track {
-      width: 105px !important;
-      height: 6px !important;
+      width: 90px !important;
+      height: 5px !important;
       border-radius: 2px !important;
     }
 
     .shield-badge {
-      font-size: 0.58rem !important;
-      padding: 1px 4px !important;
+      font-size: 0.54rem !important;
+      padding: 1px 3px !important;
     }
 
     .resources-row {
-      gap: 6px !important;
-      padding-top: 2px !important;
-      font-size: 0.62rem !important;
+      gap: 5px !important;
+      padding-top: 1px !important;
+      font-size: 0.58rem !important;
     }
 
     .coin-row, .key-row, .shard-row {
       gap: 2px !important;
-      font-size: 0.62rem !important;
+      font-size: 0.58rem !important;
     }
 
     .coin-dot, .key-dot, .shard-dot {
@@ -3211,112 +3213,68 @@
       display: none !important;
     }
 
-    /* 2. TOP-RIGHT: Minimapa Compacto (No bloquea la arena) */
+    /* 2. TOP-RIGHT: Minimapa Micro-Radar Translúcido (NO bloquea la esquina superior derecha) */
     .hud-card-top-right {
-      top: 6px !important;
-      right: 6px !important;
+      top: 4px !important;
+      right: 4px !important;
       gap: 0 !important;
+      opacity: 0.45 !important;
+      transition: opacity 0.2s ease !important;
+    }
+
+    .hud-card-top-right:hover,
+    .hud-card-top-right:active {
+      opacity: 0.95 !important;
     }
 
     .minimap-wrapper {
-      padding: 3px 5px !important;
-      background: rgba(12, 19, 34, 0.55) !important;
-      backdrop-filter: blur(8px) !important;
-      border: 1px solid rgba(56, 189, 248, 0.2) !important;
-      border-radius: 6px !important;
-      gap: 2px !important;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+      padding: 2px 4px !important;
+      background: rgba(12, 19, 34, 0.45) !important;
+      backdrop-filter: blur(4px) !important;
+      border: 1px solid rgba(56, 189, 248, 0.18) !important;
+      border-radius: 5px !important;
+      gap: 1px !important;
     }
 
     .minimap-telemetry-row {
-      font-size: 0.55rem !important;
-      gap: 4px !important;
-    }
-
-    .room-type-text {
-      font-size: 0.55rem !important;
-    }
-
-    .room-badge {
-      font-size: 0.52rem !important;
-      padding: 1px 4px !important;
+      display: none !important; /* Quita el texto gigante que tapaba enemigos */
     }
 
     .minimap-container {
-      width: 80px !important;
-      height: 44px !important;
-      border-radius: 3px !important;
+      width: 65px !important;
+      height: 38px !important;
+      border-radius: 2px !important;
+      background: rgba(9, 15, 29, 0.6) !important;
     }
 
-    /* 3. ARMA ACTIVA & SIERRAS: Reubicadas al TOP (Liberando el pulgar izquierdo al 100%) */
-    .hud-bottom-dock {
-      position: absolute !important;
-      top: 6px !important;
-      left: 135px !important;
-      bottom: auto !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 5px !important;
-      background: rgba(12, 19, 34, 0.55) !important;
-      backdrop-filter: blur(8px) !important;
-      border: 1px solid rgba(56, 189, 248, 0.2) !important;
-      border-radius: 6px !important;
-      padding: 3px 6px !important;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
-    }
-
-    .hud-weapon-card {
-      gap: 4px !important;
-    }
-
-    .hud-weapon-symbol {
-      font-size: 0.78rem !important;
-    }
-
-    .hud-weapon-name {
-      font-size: 0.62rem !important;
-    }
-
-    .hud-weapon-mode {
-      font-size: 0.54rem !important;
-    }
-
-    .hud-element-badge {
-      padding: 1px 4px !important;
-      font-size: 0.54rem !important;
-    }
-
-    .hud-saws-badge {
-      padding: 1px 4px !important;
-      font-size: 0.54rem !important;
-    }
-
-    /* 4. BARRA RÁPIDA SUPERIOR MÓVIL */
+    /* 3. BARRA RÁPIDA SUPERIOR */
     .mobile-top-bar {
-      top: 6px !important;
+      top: 4px !important;
       left: 50% !important;
       transform: translateX(-50%) !important;
       gap: 6px !important;
       z-index: 88 !important;
+      opacity: 0.75 !important;
     }
 
     .btn-mobile-tool {
-      padding: 4px 8px !important;
-      font-size: 0.62rem !important;
+      padding: 3px 8px !important;
+      font-size: 0.6rem !important;
       border-radius: 5px !important;
-      background: rgba(12, 19, 34, 0.75) !important;
-      border: 1px solid rgba(56, 189, 248, 0.35) !important;
+      background: rgba(12, 19, 34, 0.7) !important;
+      border: 1px solid rgba(56, 189, 248, 0.25) !important;
     }
 
-    /* 5. PROMPT FLOTANTE EN EL MUNDO [E]: Más compacto y legible */
+    /* 4. PROMPT FLOTANTE EN EL MUNDO [E] */
     .world-interact-prompt {
-      transform: translate(-50%, -100%) scale(0.72) !important;
-      padding: 6px 12px !important;
-      border-radius: 8px !important;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8) !important;
+      transform: translate(-50%, -100%) scale(0.68) !important;
+      padding: 5px 10px !important;
+      border-radius: 6px !important;
+      pointer-events: none !important;
+      opacity: 0.85 !important;
     }
 
-    /* 6. JOYSTICK IZQUIERDO: Más compacto y translúcido */
+    /* 5. CAPA TÁCTIL: DOS JOYSTICKS FLOTANTES DINÁMICOS (IZQUIERDA Y DERECHA) */
     .mobile-touch-layer {
       position: absolute;
       inset: 0;
@@ -3327,6 +3285,7 @@
       -webkit-user-select: none;
     }
 
+    /* Zona Izquierda (0 - 50% ancho): Movimiento */
     .mobile-zone-left {
       position: absolute;
       top: 0;
@@ -3337,20 +3296,32 @@
       touch-action: none;
     }
 
+    /* Zona Derecha (50% - 100% ancho): Apuntado y Disparo Flotante */
+    .mobile-zone-right {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50vw;
+      width: 50vw;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    /* Base de Joystick Flotante (Sirve para Izquierda y Derecha) */
     .mobile-stick-base {
       position: absolute;
-      width: 96px !important;
-      height: 96px !important;
-      margin-left: -48px !important;
-      margin-top: -48px !important;
+      width: 104px !important;
+      height: 104px !important;
+      margin-left: -52px !important;
+      margin-top: -52px !important;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, rgba(15, 23, 42, 0.3) 70%, rgba(56, 189, 248, 0.45) 100%) !important;
-      border: 1.5px solid rgba(56, 189, 248, 0.5) !important;
-      box-shadow: 0 0 18px rgba(56, 189, 248, 0.25), inset 0 0 12px rgba(14, 165, 233, 0.2);
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, rgba(15, 23, 42, 0.35) 70%, rgba(56, 189, 248, 0.5) 100%) !important;
+      border: 2px solid rgba(56, 189, 248, 0.6) !important;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.35), inset 0 0 12px rgba(14, 165, 233, 0.25);
       pointer-events: none;
       opacity: 0;
       transform: scale(0.85);
-      transition: opacity 0.15s ease, transform 0.15s ease;
+      transition: opacity 0.12s ease, transform 0.12s ease;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -3358,27 +3329,44 @@
     }
 
     .mobile-stick-base.visible {
-      opacity: 1;
-      transform: scale(1);
+      opacity: 1 !important;
+      transform: scale(1) !important;
     }
 
     .mobile-stick-knob {
-      width: 44px !important;
-      height: 44px !important;
+      width: 48px !important;
+      height: 48px !important;
       border-radius: 50%;
       background: radial-gradient(circle, #38bdf8 0%, #0284c7 60%, #0369a1 100%);
-      box-shadow: 0 0 14px rgba(56, 189, 248, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.6);
       border: 2px solid #e0f2fe;
       pointer-events: none;
       transition: transform 0.04s linear;
     }
 
-    /* 7. CONTROLES DEL LADO DERECHO: Cluster Ergonómico en Arco con Altura Ajustable */
+    /* Base Roja para el Joystick de Disparo Flotante Derecho */
+    .mobile-stick-base-aim {
+      background: radial-gradient(circle, rgba(239, 68, 68, 0.2) 0%, rgba(30, 27, 75, 0.4) 70%, rgba(244, 63, 94, 0.55) 100%) !important;
+      border: 2px solid rgba(244, 63, 94, 0.7) !important;
+      box-shadow: 0 0 22px rgba(239, 68, 68, 0.4), inset 0 0 14px rgba(239, 68, 68, 0.25) !important;
+    }
+
+    .mobile-stick-knob-aim {
+      background: radial-gradient(circle, #f87171 0%, #dc2626 65%, #991b1b 100%) !important;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.95), inset 0 2px 4px rgba(255, 255, 255, 0.7) !important;
+      border: 2px solid #fee2e2 !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem !important;
+    }
+
+    /* 6. BOTONES DE ACCIÓN: MÁS VOLUMEN, RESPONSIVOS Y SENSIBLES */
     .mobile-controls-right {
       position: absolute !important;
       right: clamp(16px, 4vw, 55px) !important;
-      width: 210px !important;
-      height: 210px !important;
+      width: 190px !important;
+      height: 190px !important;
       pointer-events: none !important;
       display: flex;
       align-items: center;
@@ -3387,64 +3375,23 @@
       transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
 
-    /* Altura MEDIA (Predeterminada: cerca de la mitad del agarre natural) */
     .mobile-controls-right.pos-mid,
     .mobile-controls-right:not(.pos-low):not(.pos-high) {
       bottom: clamp(75px, 25vh, 220px) !important;
     }
 
-    /* Altura ALTA (Justo a la mitad de la tablet) */
     .mobile-controls-right.pos-high {
       bottom: clamp(130px, 40vh, 360px) !important;
     }
 
-    /* Altura BAJA (Esquina inferior) */
     .mobile-controls-right.pos-low {
       bottom: 14px !important;
-    }
-
-    /* Joystick de Apuntado y Disparo */
-    .mobile-aim-base {
-      position: absolute !important;
-      bottom: 16px !important;
-      right: 16px !important;
-      width: 92px !important;
-      height: 92px !important;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(239, 68, 68, 0.18) 0%, rgba(30, 27, 75, 0.35) 70%, rgba(244, 63, 94, 0.5) 100%) !important;
-      border: 2px solid rgba(244, 63, 94, 0.6) !important;
-      box-shadow: 0 0 20px rgba(239, 68, 68, 0.35), inset 0 0 12px rgba(239, 68, 68, 0.2);
-      pointer-events: auto;
-      touch-action: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .mobile-aim-base.active {
-      box-shadow: 0 0 28px rgba(244, 63, 94, 0.7), inset 0 0 16px rgba(239, 68, 68, 0.4);
-      border-color: #f43f5e;
-    }
-
-    .mobile-aim-knob {
-      width: 46px !important;
-      height: 46px !important;
-      border-radius: 50%;
-      background: radial-gradient(circle, #f87171 0%, #dc2626 65%, #991b1b 100%);
-      box-shadow: 0 0 16px rgba(239, 68, 68, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.7);
-      border: 2px solid #fee2e2;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      font-size: 1.1rem !important;
-      transition: transform 0.04s linear;
     }
 
     .btn-touch-action {
       position: absolute;
       border-radius: 50px;
-      pointer-events: auto;
+      pointer-events: auto !important;
       touch-action: none;
       font-family: var(--font-mono);
       font-weight: 800;
@@ -3453,7 +3400,7 @@
       justify-content: center;
       gap: 5px;
       cursor: pointer;
-      transition: transform 0.1s ease, filter 0.1s ease, box-shadow 0.1s ease;
+      transition: transform 0.08s ease, filter 0.08s ease;
       backdrop-filter: blur(8px);
     }
 
@@ -3463,20 +3410,20 @@
       filter: brightness(1.3);
     }
 
-    /* Botón de Esquiva / Dash */
+    /* Botón de Esquiva / Dash (Con más volumen: 66px) */
     .btn-touch-dodge {
       position: absolute !important;
       top: auto !important;
-      bottom: 118px !important;
-      right: 16px !important;
-      width: 56px !important;
-      height: 56px !important;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(2, 132, 199, 0.85) 0%, rgba(12, 74, 110, 0.85) 80%, rgba(8, 47, 73, 0.9) 100%) !important;
-      border: 2px solid #38bdf8;
+      bottom: 60px !important;
+      right: 14px !important;
+      width: 66px !important;
+      height: 66px !important;
+      border-radius: 50% !important;
+      background: radial-gradient(circle, #0284c7 0%, #0369a1 70%, #0c4a6e 100%) !important;
+      border: 2.5px solid #38bdf8 !important;
       color: #f8fafc;
-      font-size: 0.64rem !important;
-      box-shadow: 0 0 14px rgba(56, 189, 248, 0.4) !important;
+      font-size: 0.72rem !important;
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.5) !important;
       flex-direction: column;
     }
 
@@ -3485,57 +3432,57 @@
       border-color: #64748b;
     }
 
-    /* Botón de Modo de Arma */
+    /* Botón de Modo de Arma (Con más volumen) */
     .btn-touch-mode {
       position: absolute !important;
       top: auto !important;
-      bottom: 68px !important;
-      right: 118px !important;
-      padding: 5px 9px !important;
-      font-size: 0.62rem !important;
-      border-radius: 12px !important;
-      background: rgba(17, 28, 48, 0.85) !important;
-      border: 1.5px solid #facc15;
+      bottom: 80px !important;
+      right: 90px !important;
+      padding: 9px 14px !important;
+      font-size: 0.68rem !important;
+      border-radius: 14px !important;
+      background: rgba(17, 28, 48, 0.9) !important;
+      border: 2px solid #facc15 !important;
       color: #facc15;
-      box-shadow: 0 0 10px rgba(250, 204, 21, 0.25) !important;
+      box-shadow: 0 0 12px rgba(250, 204, 21, 0.3) !important;
     }
 
-    /* Botón de Cambio de Arma */
+    /* Botón de Cambio de Arma (Con más volumen) */
     .btn-touch-swap {
       position: absolute !important;
       top: auto !important;
-      bottom: 18px !important;
-      right: 118px !important;
-      padding: 5px 9px !important;
-      font-size: 0.62rem !important;
-      border-radius: 12px !important;
-      background: rgba(17, 28, 48, 0.85) !important;
-      border: 1.5px solid #c084fc;
+      bottom: 24px !important;
+      right: 90px !important;
+      padding: 9px 14px !important;
+      font-size: 0.68rem !important;
+      border-radius: 14px !important;
+      background: rgba(17, 28, 48, 0.9) !important;
+      border: 2px solid #c084fc !important;
       color: #e9d5ff;
-      box-shadow: 0 0 10px rgba(192, 132, 252, 0.25) !important;
+      box-shadow: 0 0 12px rgba(192, 132, 252, 0.3) !important;
     }
 
-    /* Botón Contextual de Interacción [E] (Totalmente fuera del minimap, sobre el cluster derecho) */
+    /* Botón Contextual de Interacción [E] (Con volumen y fuera de la arena) */
     .btn-touch-interact {
       position: absolute !important;
       top: auto !important;
-      bottom: 124px !important;
-      right: 84px !important;
-      padding: 6px 12px !important;
-      border-radius: 14px !important;
+      bottom: 138px !important;
+      right: 20px !important;
+      padding: 10px 18px !important;
+      border-radius: 18px !important;
       background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-      border: 2px solid #6ee7b7;
+      border: 2.5px solid #6ee7b7;
       color: #fff;
-      font-size: 0.72rem !important;
+      font-size: 0.78rem !important;
       font-weight: 900;
       letter-spacing: 0.5px;
-      box-shadow: 0 0 18px rgba(16, 185, 129, 0.7);
-      pointer-events: auto;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.7);
+      pointer-events: auto !important;
       touch-action: none;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       transition: opacity 0.2s ease, transform 0.2s ease;
       z-index: 99 !important;
     }
@@ -3727,7 +3674,14 @@
       </div>
     </div>
 
-    <!-- Mitad Derecha: Twin-Stick de apuntado/disparo y botones de acción -->
+    <!-- Mitad Derecha: Zona táctil para apuntado dinámico flotante 360° -->
+    <div id="mobile-zone-right" class="mobile-zone-right">
+      <div id="mobile-stick-base-aim" class="mobile-stick-base mobile-stick-base-aim">
+        <div id="mobile-stick-knob-aim" class="mobile-stick-knob mobile-stick-knob-aim">🎯</div>
+      </div>
+    </div>
+
+    <!-- Botones de Acción Táctiles (Chunky, con volumen y alta sensibilidad) -->
     <div id="mobile-controls-right" class="mobile-controls-right">
       <!-- Botón Contextual de Interacción [E] -->
       <button id="btn-touch-interact" class="btn-touch-interact hidden" type="button">
@@ -3737,7 +3691,7 @@
       <!-- Botón de Esquiva / Dash [SHIFT] -->
       <button id="btn-touch-dodge" class="btn-touch-action btn-touch-dodge" type="button" title="Esquivar [SHIFT]">
         <span>⚡ DASH</span>
-        <span style="font-size: 0.68rem; color: #bae6fd;">(<span id="touch-dodge-charges">2</span>)</span>
+        <span style="font-size: 0.72rem; color: #bae6fd;">(<span id="touch-dodge-charges">2</span>)</span>
       </button>
 
       <!-- Botón de Modo de Arma [ESPACIO] -->
@@ -3750,13 +3704,6 @@
       <button id="btn-touch-swap" class="btn-touch-action btn-touch-swap" type="button" title="Cambiar Arma">
         <span>🔄 ARMA</span>
       </button>
-
-      <!-- Joystick de Apuntado + Disparo Continuo + Auto-Aim -->
-      <div id="mobile-stick-base-aim" class="mobile-aim-base" title="Arrastra para apuntar o mantén pulsado para Auto-Aim">
-        <div id="mobile-stick-knob-aim" class="mobile-aim-knob">
-          🎯
-        </div>
-      </div>
     </div>
   </div>
 

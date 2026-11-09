@@ -412,30 +412,37 @@
     }
 
     // ------------------------------------------------------------------------
-    // JOYSTICK DERECHO: APUNTADO ANALÓGICO + DISPARO + AUTO-AIM
+    // JOYSTICK DERECHO: APUNTADO FLOTANTE DINÁMICO 360° + AUTO-AIM ASISTIDO
     // ------------------------------------------------------------------------
-    if (rightAimBase && knobAim) {
-      rightAimBase.addEventListener('touchstart', (e) => {
+    const rightZone = document.getElementById('mobile-zone-right') || rightAimBase;
+
+    if (rightZone && rightAimBase && knobAim) {
+      const handleAimStart = (e) => {
         if (aimTouchId !== null) return;
         const touch = e.changedTouches[0];
         aimTouchId = touch.identifier;
+        aimOrigin = { x: touch.clientX, y: touch.clientY };
 
-        const rect = rightAimBase.getBoundingClientRect();
-        aimOrigin = {
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        };
+        // Anclar el stick dinámicamente donde apoya el pulgar derecho
+        rightAimBase.style.left = `${touch.clientX}px`;
+        rightAimBase.style.top = `${touch.clientY}px`;
+        rightAimBase.classList.add('visible', 'active');
+        knobAim.style.transform = 'translate(0px, 0px)';
 
         isAimPressed = true;
         aimDragged = false;
-        rightAimBase.classList.add('active');
 
-        // Al tocar, activa disparo con auto-aim inmediato
+        // Disparo con auto-aim asistido inmediato al tocar
         const game = window.activeGameInstance;
         if (game) {
           updateAimAssist(game.player, game.currentRoom);
         }
-      }, { passive: false });
+      };
+
+      rightZone.addEventListener('touchstart', handleAimStart, { passive: false });
+      if (rightZone !== rightAimBase) {
+        rightAimBase.addEventListener('touchstart', handleAimStart, { passive: false });
+      }
 
       const onAimMove = (e) => {
         if (aimTouchId === null) return;
@@ -446,7 +453,7 @@
             const dy = touch.clientY - aimOrigin.y;
             const dist = Math.hypot(dx, dy);
 
-            if (dist > AIM_DEADZONE) {
+            if (dist > 8) { // Sensibilidad alta, zona muerta reducida a 8px
               aimDragged = true;
               const clampedDist = Math.min(dist, JOYSTICK_MAX_RADIUS);
               const angle = Math.atan2(dy, dx);
@@ -480,7 +487,7 @@
             aimTouchId = null;
             isAimPressed = false;
             aimDragged = false;
-            rightAimBase.classList.remove('active');
+            rightAimBase.classList.remove('visible', 'active');
             knobAim.style.transform = 'translate(0px, 0px)';
             mobileState.aimState.isAttacking = false;
             mobileState.aimState.active = false;
