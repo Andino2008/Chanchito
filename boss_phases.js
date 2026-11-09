@@ -41,7 +41,7 @@ window.BaseEntity = BaseEntity;
  * NO está en I-Frames de Dash o Parry, recibe daño y knockback.
  */
 var BossShockwaveHazard = class BossShockwaveHazard extends BaseEntity {
-  constructor(x, y, color = '#ef4444', expansionSpeed = 340, maxRadius = 520, damage = 18) {
+  constructor(x, y, color = '#ef4444', expansionSpeed = 340, maxRadius = 420, damage = 18) {
     super(x, y, 16, color);
     this.currentRadius = 18;
     this.expansionSpeed = expansionSpeed;
@@ -93,7 +93,14 @@ var BossShockwaveHazard = class BossShockwaveHazard extends BaseEntity {
   }
 
   draw(ctx) {
+    const room = window.activeGameInstance ? window.activeGameInstance.currentRoom : null;
+    const b = room ? room.bounds : null;
     ctx.save();
+    if (b) {
+      ctx.beginPath();
+      ctx.rect(b.left, b.top, b.width, b.height);
+      ctx.clip();
+    }
     const alpha = Math.max(0.15, 1 - (this.currentRadius / this.maxRadius));
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);

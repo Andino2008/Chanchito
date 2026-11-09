@@ -137,6 +137,30 @@ class MathUtils {
     const dy = cy - closestY;
     return dx * dx + dy * dy < r * r;
   }
+
+  static getRayWallIntersection(startX, startY, dirX, dirY, maxDist, bounds) {
+    let tMin = maxDist;
+    if (dirX > 0.0001) {
+      const t = (bounds.right - startX) / dirX;
+      if (t > 0 && t < tMin) tMin = t;
+    } else if (dirX < -0.0001) {
+      const t = (bounds.left - startX) / dirX;
+      if (t > 0 && t < tMin) tMin = t;
+    }
+    if (dirY > 0.0001) {
+      const t = (bounds.bottom - startY) / dirY;
+      if (t > 0 && t < tMin) tMin = t;
+    } else if (dirY < -0.0001) {
+      const t = (bounds.top - startY) / dirY;
+      if (t > 0 && t < tMin) tMin = t;
+    }
+    return {
+      x: startX + dirX * tMin,
+      y: startY + dirY * tMin,
+      dist: tMin,
+      hitWall: tMin < maxDist,
+    };
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -340,12 +364,19 @@ class Particle {
     this.maxLife = lifeTime;
   }
 
-  update(dt) {
+  update(dt, room = null) {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.vx *= Math.pow(0.08, dt);
     this.vy *= Math.pow(0.08, dt);
     this.lifeTime -= dt;
+
+    const b = room ? room.bounds : null;
+    if (b) {
+      if (this.x < b.left - 24 || this.x > b.right + 24 || this.y < b.top - 24 || this.y > b.bottom + 24) {
+        this.lifeTime = 0;
+      }
+    }
   }
 
   draw(ctx) {
@@ -3209,8 +3240,10 @@ class ChargeLaserWeapon extends Weapon {
 
       const startX = player.x + dirX * (player.radius + 6);
       const startY = player.y + dirY * (player.radius + 6);
-      const endX = startX + dirX * this.beamMaxLength;
-      const endY = startY + dirY * this.beamMaxLength;
+      const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
+      const wallHit = MathUtils.getRayWallIntersection(startX, startY, dirX, dirY, this.beamMaxLength, rb);
+      const endX = wallHit.x;
+      const endY = wallHit.y;
 
       const beamElement = player.rollElementForAttack();
       const beamElemLevel = player.getElementLevel(beamElement);
@@ -3263,6 +3296,14 @@ class ChargeLaserWeapon extends Weapon {
       }
 
       this.activeBeams.push(beamEntry);
+
+      if (wallHit.hitWall && room && typeof room.spawnParticle === 'function') {
+        for (let sp = 0; sp < 8; sp++) {
+          const sparkAng = Math.atan2(-dirY, -dirX) + (Math.random() - 0.5) * 1.5;
+          const sparkSpd = 90 + Math.random() * 140;
+          room.spawnParticle(endX, endY, Math.cos(sparkAng) * sparkSpd, Math.sin(sparkAng) * sparkSpd, 4, elemCfg.color || '#f0abfc', 0.28);
+        }
+      }
     }
   }
 
@@ -3285,8 +3326,10 @@ class ChargeLaserWeapon extends Weapon {
 
       const startX = player.x + dirX * (player.radius + 6);
       const startY = player.y + dirY * (player.radius + 6);
-      const endX = startX + dirX * pulseLength;
-      const endY = startY + dirY * pulseLength;
+      const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
+      const wallHit = MathUtils.getRayWallIntersection(startX, startY, dirX, dirY, pulseLength, rb);
+      const endX = wallHit.x;
+      const endY = wallHit.y;
 
       const beamElement = player.rollElementForAttack();
       const beamElemLevel = player.getElementLevel(beamElement);
@@ -3333,6 +3376,14 @@ class ChargeLaserWeapon extends Weapon {
         timer: 0.14,
         maxTimer: 0.14,
       });
+
+      if (wallHit.hitWall && room && typeof room.spawnParticle === 'function') {
+        for (let sp = 0; sp < 4; sp++) {
+          const sparkAng = Math.atan2(-dirY, -dirX) + (Math.random() - 0.5) * 1.5;
+          const sparkSpd = 70 + Math.random() * 100;
+          room.spawnParticle(endX, endY, Math.cos(sparkAng) * sparkSpd, Math.sin(sparkAng) * sparkSpd, 3, elemCfg.color || '#38bdf8', 0.2);
+        }
+      }
     }
   }
 
@@ -3353,8 +3404,11 @@ class ChargeLaserWeapon extends Weapon {
 
         const startX = player.x + dirX * (player.radius + 4);
         const startY = player.y + dirY * (player.radius + 4);
-        const endX = startX + dirX * this.beamMaxLength;
-        const endY = startY + dirY * this.beamMaxLength;
+        const room = window.activeGameInstance ? window.activeGameInstance.currentRoom : null;
+        const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
+        const wallHit = MathUtils.getRayWallIntersection(startX, startY, dirX, dirY, this.beamMaxLength, rb);
+        const endX = wallHit.x;
+        const endY = wallHit.y;
 
         ctx.beginPath();
         ctx.moveTo(startX, startY);
@@ -3900,8 +3954,16 @@ class Enemy extends Entity {
     }
 
     const eb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
-    this.x = MathUtils.clamp(this.x, eb.left + this.radius, eb.right - this.radius);
-    this.y = MathUtils.clamp(this.y, eb.top + this.radius, eb.bottom - this.radius);
+    const clampedX = MathUtils.clamp(this.x, eb.left + this.radius, eb.right - this.radius);
+    const clampedY = MathUtils.clamp(this.y, eb.top + this.radius, eb.bottom - this.radius);
+    if (clampedX !== this.x) {
+      this.x = clampedX;
+      this.vx = 0;
+    }
+    if (clampedY !== this.y) {
+      this.y = clampedY;
+      this.vy = 0;
+    }
 
     if (bleedEffect) {
       const distMoved = Math.hypot(this.x - prevX, this.y - prevY);
@@ -9065,7 +9127,7 @@ class Room {
     }
 
     for (const part of this.particles) {
-      part.update(dt);
+      part.update(dt, this);
     }
     this.particles = this.particles.filter((pt) => pt.lifeTime > 0);
 
@@ -9411,9 +9473,10 @@ class Room {
   drawRoomDecorations(ctx, player) {}
 
   draw(ctx, player) {
-    // Fondo exterior de vacío abisal
+    // Fondo exterior de vacío abisal extendido para cubrir cualquier traslación de screen shake
+    const maxShakeMargin = 80;
     ctx.fillStyle = '#080d1a';
-    ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+    ctx.fillRect(-maxShakeMargin, -maxShakeMargin, CONFIG.CANVAS_WIDTH + maxShakeMargin * 2, CONFIG.CANVAS_HEIGHT + maxShakeMargin * 2);
 
     const b = this.bounds;
 
@@ -12297,23 +12360,34 @@ class Game {
   }
 
   draw() {
+    // 1. Resetear cualquier matriz previa y pintar fondo sólido base en espacio no trasladado
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+    this.ctx.fillStyle = '#080d1a';
+    this.ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
 
-    // El Canvas se dedica 100% a renderizar las entidades, proyectiles y partículas del juego
+    // 2. Renderizado seguro con recorte estricto a las dimensiones reales del canvas (960x640)
     this.ctx.save();
-    if (this.screenShakeTimer > 0) {
-      this.screenShakeTimer -= 0.016;
-      const currentIntensity = this.screenShakeIntensity * Math.min(1, this.screenShakeTimer / 0.15);
-      const shakeX = (Math.random() - 0.5) * 2 * currentIntensity;
-      const shakeY = (Math.random() - 0.5) * 2 * currentIntensity;
-      this.ctx.translate(shakeX, shakeY);
-      if (this.screenShakeTimer <= 0) {
-        this.screenShakeIntensity = 0;
+    try {
+      this.ctx.beginPath();
+      this.ctx.rect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+      this.ctx.clip();
+
+      if (this.screenShakeTimer > 0) {
+        this.screenShakeTimer -= 0.016;
+        const currentIntensity = this.screenShakeIntensity * Math.min(1, this.screenShakeTimer / 0.15);
+        const shakeX = (Math.random() - 0.5) * 2 * currentIntensity;
+        const shakeY = (Math.random() - 0.5) * 2 * currentIntensity;
+        this.ctx.translate(shakeX, shakeY);
+        if (this.screenShakeTimer <= 0) {
+          this.screenShakeIntensity = 0;
+        }
       }
+      this.currentRoom.draw(this.ctx, this.player);
+      this.player.draw(this.ctx, this.input, this.currentRoom);
+    } finally {
+      this.ctx.restore();
     }
-    this.currentRoom.draw(this.ctx, this.player);
-    this.player.draw(this.ctx, this.input, this.currentRoom);
-    this.ctx.restore();
   }
 
   loop(timestamp) {
