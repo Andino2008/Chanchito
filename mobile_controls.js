@@ -248,6 +248,41 @@
       });
     }
 
+    // Botón de Altura de Controles Táctiles (Media -> Alta Tablet -> Baja)
+    const btnPos = document.getElementById('btn-touch-pos');
+    const controlsRight = document.getElementById('mobile-controls-right');
+    const posLabel = document.getElementById('touch-pos-label');
+
+    const POSITIONS = ['mid', 'high', 'low'];
+    const POS_LABELS = {
+      mid: 'ALTURA: MEDIA',
+      high: 'ALTURA: ALTA (TABLET)',
+      low: 'ALTURA: BAJA',
+    };
+
+    let currentPos = localStorage.getItem('mobile_controls_height') || 'mid';
+    function applyControlsHeight(pos) {
+      currentPos = pos;
+      localStorage.setItem('mobile_controls_height', pos);
+      if (controlsRight) {
+        controlsRight.classList.remove('pos-low', 'pos-mid', 'pos-high');
+        controlsRight.classList.add(`pos-${pos}`);
+      }
+      if (posLabel) {
+        posLabel.textContent = POS_LABELS[pos] || 'ALTURA: MEDIA';
+      }
+    }
+    applyControlsHeight(currentPos);
+
+    if (btnPos) {
+      btnPos.addEventListener('click', (e) => {
+        e.preventDefault();
+        const nextIdx = (POSITIONS.indexOf(currentPos) + 1) % POSITIONS.length;
+        applyControlsHeight(POSITIONS[nextIdx]);
+        if (navigator.vibrate) navigator.vibrate(20);
+      });
+    }
+
     // Botón de Esquiva / Dash
     if (btnDodge) {
       const handleDodge = (e) => {

@@ -3373,18 +3373,34 @@
       transition: transform 0.04s linear;
     }
 
-    /* 7. CONTROLES DEL LADO DERECHO: Cluster Ergonómico en Arco (Sin tapar la arena) */
+    /* 7. CONTROLES DEL LADO DERECHO: Cluster Ergonómico en Arco con Altura Ajustable */
     .mobile-controls-right {
       position: absolute !important;
-      bottom: 0 !important;
-      right: 0 !important;
-      width: 220px !important;
-      height: 220px !important;
+      right: clamp(16px, 4vw, 55px) !important;
+      width: 210px !important;
+      height: 210px !important;
       pointer-events: none !important;
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 87;
+      transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+
+    /* Altura MEDIA (Predeterminada: cerca de la mitad del agarre natural) */
+    .mobile-controls-right.pos-mid,
+    .mobile-controls-right:not(.pos-low):not(.pos-high) {
+      bottom: clamp(75px, 25vh, 220px) !important;
+    }
+
+    /* Altura ALTA (Justo a la mitad de la tablet) */
+    .mobile-controls-right.pos-high {
+      bottom: clamp(130px, 40vh, 360px) !important;
+    }
+
+    /* Altura BAJA (Esquina inferior) */
+    .mobile-controls-right.pos-low {
+      bottom: 14px !important;
     }
 
     /* Joystick de Apuntado y Disparo */
@@ -3692,8 +3708,11 @@
     <button id="btn-touch-tab" class="btn-mobile-tool" type="button" title="Ver Reliquias y Stats [TAB]">
       <span>🎒</span> <span>RELIQUIAS</span>
     </button>
+    <button id="btn-touch-pos" class="btn-mobile-tool" type="button" title="Ajustar altura de botones (Media / Alta Tablet / Baja)">
+      <span>🕹️</span> <span id="touch-pos-label">ALTURA: MEDIA</span>
+    </button>
     <button id="btn-touch-fullscreen" class="btn-mobile-tool" type="button" title="Pantalla Completa">
-      <span>⛶</span> <span>FULLSCREEN</span>
+      <span>⛶</span> <span>PANTALLA</span>
     </button>
   </div>
 
