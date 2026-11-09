@@ -30,10 +30,11 @@ window.BaseEntity = BaseEntity;
 
 /**
  * Cofre del Gran Campeón (ChampionChest)
+ * Recompensa gloriosa al superar el Monolito de Desafío de Élites.
  */
 var ChampionChest = class ChampionChest extends BaseEntity {
   constructor(x, y) {
-    super(x, y, 22, '#eab308');
+    super(x, y, 24, '#eab308');
     this.opened = false;
     this.pulseTimer = 0;
   }
@@ -42,76 +43,160 @@ var ChampionChest = class ChampionChest extends BaseEntity {
     this.pulseTimer += dt * 3.5;
     if (this.opened || !player || !room) return;
 
+    // Obstáculo físico: el jugador no puede atravesar el cofre
     const d = Math.hypot(player.x - this.x, player.y - this.y);
-    if (d <= this.radius + player.radius + 15) {
-      const input = (player && player.input) || (window.activeGameInstance ? window.activeGameInstance.input : null);
-    const pressedE = Boolean(input && input.keys && (input.keys.has('KeyE') || input.keys.has('Space')));
-    if (pressedE || d <= this.radius + player.radius) {
-        this.opened = true;
+    const minDist = this.radius + player.radius;
+    if (d < minDist) {
+      const overlap = minDist - d;
+      if (d > 0.0001) {
+        player.x += ((player.x - this.x) / d) * overlap;
+        player.y += ((player.y - this.y) / d) * overlap;
+      } else {
+        player.x += minDist;
+      }
+    }
+  }
 
-        // 1. Recompensa masiva de economía
-        player.addCoins(45);
-        if (window.metaprogressionManager) {
-          window.metaprogressionManager.addGems(20);
-        }
+  open(player, room) {
+    if (this.opened) return;
+    this.opened = true;
 
-        // 2. Generar Pedestal de Reliquia garantizado
-        if (typeof RelicPedestal !== 'undefined') {
-          const relic = player.itemManager.drawRandomRelic();
-          if (relic) {
-            room.relicPedestals.push(new RelicPedestal(this.x, this.y, relic));
-          }
-        }
+    // 1. Economía masiva (50 Oro + 25 Gemas directas)
+    player.coins = (player.coins || 0) + 50;
+    if (window.metaProgression) {
+      window.metaProgression.addShards(25);
+    }
+    if (player.ui) {
+      player.ui.updateCoins(player.coins);
+      player.ui.updateShards();
+    }
 
-        // 3. Efectos y notificación
-        if (player.ui) {
-          player.ui.showToast('🏆 ¡COFRE DEL CAMPEÓN! +45 Oro, +20 Gemas y Reliquia Suprema');
-        }
+    // 2. Pedestal de Reliquia Suprema garantizado en la sala
+    const PedestalClass = window.ItemPedestal || (typeof ItemPedestal !== 'undefined' ? ItemPedestal : null);
+    if (PedestalClass && room && room.pedestals) {
+      room.pedestals.push(new PedestalClass(this.x, this.y - 45));
+    } else if (player.itemManager) {
+      player.itemManager.grantRandomRelic();
+    }
 
-        for (let i = 0; i < 28; i++) {
-          const ang = (i * Math.PI * 2) / 28;
-          const spd = 80 + Math.random() * 120;
-          room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 4.5, '#facc15', 0.6);
-        }
+    // 3. Spawns físicos de botín en el suelo (2 Monedas grandes, 2 Gemas del Vacío, 1 Corazón)
+    const CoinClass = window.Coin || (typeof Coin !== 'undefined' ? Coin : null);
+    const VoidGemClass = window.VoidGem || (typeof VoidGem !== 'undefined' ? VoidGem : null);
+    const HeartClass = window.HeartItem || (typeof HeartItem !== 'undefined' ? HeartItem : null);
+
+    if (room) {
+      if (CoinClass && room.coins) {
+        room.coins.push(new CoinClass(this.x - 28, this.y + 16));
+        room.coins.push(new CoinClass(this.x + 28, this.y + 16));
+      }
+      if (VoidGemClass && room.coins) {
+        room.coins.push(new VoidGemClass(this.x - 14, this.y + 24, 2));
+        room.coins.push(new VoidGemClass(this.x + 14, this.y + 24, 2));
+      }
+      if (HeartClass && room.hearts) {
+        room.hearts.push(new HeartClass(this.x, this.y + 30));
+      }
+    }
+
+    // 4. Game Juice, Sonidos y Sacudida
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('pedestal', { volume: 1.0 });
+      soundManager.playProcedural('coin', { volume: 0.9 });
+      soundManager.playProcedural('key', { volume: 0.8 });
+    }
+
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(7, 0.25);
+    }
+
+    if (player.ui) {
+      player.ui.showToast('🏆 ¡COFRE DEL CAMPEÓN! +50 Oro, +25 Gemas y Reliquia Suprema');
+      player.ui.spawnFloatingText('★ BOTÍN DEL GRAN CAMPEÓN ★', '#facc15', this.x, this.y - 30);
+      player.ui.spawnFloatingText('+50 🪙 | +25 💎', '#fbbf24', this.x, this.y - 50);
+    }
+
+    // 5. Explosión de partículas doradas y arcanas
+    if (room && typeof room.spawnParticle === 'function') {
+      for (let i = 0; i < 40; i++) {
+        const ang = (i * Math.PI * 2) / 40;
+        const spd = 100 + Math.random() * 160;
+        room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 5, '#facc15', 0.8);
+        room.spawnParticle(this.x, this.y, Math.cos(ang) * (spd * 0.7), Math.sin(ang) * (spd * 0.7), 4, '#c084fc', 0.7);
       }
     }
   }
 
   draw(ctx) {
-    if (this.opened) return;
     ctx.save();
-    const floatY = Math.sin(this.pulseTimer) * 3;
+    const floatY = this.opened ? 0 : Math.sin(this.pulseTimer) * 3;
 
-    // Resplandor dorado
+    // Resplandor dorado circular en el suelo
     ctx.beginPath();
-    ctx.arc(this.x, this.y + floatY, this.radius + 10, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(234, 179, 8, 0.22)';
+    ctx.arc(this.x, this.y + floatY, this.radius + 12, 0, Math.PI * 2);
+    ctx.fillStyle = this.opened ? 'rgba(234, 179, 8, 0.12)' : 'rgba(234, 179, 8, 0.30)';
     ctx.fill();
 
     // Cuerpo del cofre de campeón
     ctx.fillStyle = '#854d0e';
-    ctx.strokeStyle = '#fef08a';
+    ctx.strokeStyle = this.opened ? '#ca8a04' : '#fef08a';
     ctx.lineWidth = 3;
-    ctx.fillRect(this.x - 20, this.y - 14 + floatY, 40, 28);
-    ctx.strokeRect(this.x - 20, this.y - 14 + floatY, 40, 28);
+    ctx.fillRect(this.x - 22, this.y - 14 + floatY, 44, 28);
+    ctx.strokeRect(this.x - 22, this.y - 14 + floatY, 44, 28);
 
-    // Corona superior
-    ctx.fillStyle = '#eab308';
-    ctx.fillRect(this.x - 8, this.y - 20 + floatY, 16, 6);
+    // Decoración de herrajes dorados
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(this.x - 18, this.y - 14 + floatY, 6, 28);
+    ctx.fillRect(this.x + 12, this.y - 14 + floatY, 6, 28);
+
+    if (this.opened) {
+      // Tapa abierta hacia arriba con tesoro brillando
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(this.x - 20, this.y - 24, 40, 10);
+      ctx.strokeRect(this.x - 20, this.y - 24, 40, 10);
+
+      // Resplandor interior
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(this.x - 12, this.y - 10, 24, 8);
+    } else {
+      // Corona ornamental dorada en la cerradura
+      ctx.beginPath();
+      ctx.moveTo(this.x - 7, this.y - 2 + floatY);
+      ctx.lineTo(this.x - 5, this.y - 8 + floatY);
+      ctx.lineTo(this.x, this.y - 4 + floatY);
+      ctx.lineTo(this.x + 5, this.y - 8 + floatY);
+      ctx.lineTo(this.x + 7, this.y - 2 + floatY);
+      ctx.closePath();
+      ctx.fillStyle = '#fde047';
+      ctx.fill();
+      ctx.strokeStyle = '#a16207';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Cerrojo dorado
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(this.x - 5, this.y - 2 + floatY, 10, 8);
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(this.x - 2, this.y + floatY, 4, 4);
+    }
+
     ctx.restore();
   }
-}
+};
 
 /**
- * Monolito de Desafío de Hordas (ChallengeMonolith)
+ * Monolito de Desafío de Hordas Élite (ChallengeMonolith)
+ * Permite desatar 2 oleadas de élites reales con botín supremo.
  */
 var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
   constructor(x, y) {
     super(x, y, 26, '#dc2626');
     this.isActive = false;
     this.completed = false;
-    this.wave = 0; // 0: Listo, 1: Ola 1, 2: Ola 2, 3: Completado
-    this.waveCheckTimer = 1.0;
+    this.wave = 0; // 0: Inactivo, 1: Ola 1, 2: Ola 2, 3: Victoria
+    this.state = 'IDLE'; // 'IDLE', 'PRE_WAVE_1', 'WAVE_1', 'BREATHER_W2', 'PRE_WAVE_2', 'WAVE_2', 'COMPLETED'
+    this.timer = 0;
+    this.waveEnemies = [];
+    this.spawnPortals = []; // { x, y, timer, maxTimer, radius, color }
     this.pulseTimer = 0;
   }
 
@@ -119,25 +204,71 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
     this.pulseTimer += dt * 4;
     if (this.completed || !player || !room) return;
 
-    if (!this.isActive) {
-      // Estado de espera para interacción voluntaria [E] o click.
-      // Ya no se auto-activa al pasar caminando para evitar combates accidentales.
-    } else {
-      // Combate activo: vigilar oleadas
-      this.waveCheckTimer -= dt;
-      if (this.waveCheckTimer <= 0) {
-        this.waveCheckTimer = 0.5;
+    // Obstáculo físico: colisión sólida para no atravesar el monolito
+    const d = Math.hypot(player.x - this.x, player.y - this.y);
+    const minDist = this.radius + player.radius;
+    if (d < minDist) {
+      const overlap = minDist - d;
+      if (d > 0.0001) {
+        player.x += ((player.x - this.x) / d) * overlap;
+        player.y += ((player.y - this.y) / d) * overlap;
+      } else {
+        player.x += minDist;
+      }
+    }
 
-        const livingEnemies = room.enemies.filter(e => !e.markedForDeletion);
-        if (livingEnemies.length === 0) {
-          if (this.wave === 1) {
-            // Iniciar Ola 2
-            this.spawnWave2(room);
-          } else if (this.wave === 2) {
-            // Completado con éxito
-            this.completeChallenge(room, player);
-          }
+    // Actualizar marcadores visuales de portales de teletransporte
+    for (const portal of this.spawnPortals) {
+      portal.timer -= dt;
+      portal.pulse = (portal.pulse || 0) + dt * 8;
+    }
+    this.spawnPortals = this.spawnPortals.filter(p => p.timer > 0);
+
+    if (!this.isActive) return;
+
+    // Control de máquina de estados del Desafío
+    if (this.state === 'PRE_WAVE_1') {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.spawnWave1(room, player);
+      }
+    } else if (this.state === 'WAVE_1') {
+      // Filtrar enemigos vivos de la Ola 1
+      this.waveEnemies = this.waveEnemies.filter(e => !e.markedForDeletion && e.hp > 0 && room.enemies.includes(e));
+      if (this.waveEnemies.length === 0) {
+        // Ola 1 derrotada! Dar un respiro de 1.4s antes de la Ola 2
+        this.state = 'BREATHER_W2';
+        this.timer = 1.4;
+        if (player.ui) {
+          player.ui.showToast('⚔️ ¡OLA 1 SUPERADA! Prepárate para los Colosos del Abismo...');
+          player.ui.spawnFloatingText('★ OLA 1 SUPERADA ★', '#facc15', this.x, this.y - 35);
         }
+        if (typeof soundManager !== 'undefined' && soundManager) {
+          soundManager.playProcedural('pedestal', { volume: 0.8 });
+        }
+        if (window.activeGameInstance) {
+          window.activeGameInstance.triggerScreenShake(6, 0.2);
+        }
+      }
+    } else if (this.state === 'BREATHER_W2') {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.state = 'PRE_WAVE_2';
+        this.timer = 0.9;
+        this.prepareWave2Portals(room, player);
+      }
+    } else if (this.state === 'PRE_WAVE_2') {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.spawnWave2(room, player);
+      }
+    } else if (this.state === 'WAVE_2') {
+      // Filtrar enemigos vivos de la Ola 2
+      this.waveEnemies = this.waveEnemies.filter(e => !e.markedForDeletion && e.hp > 0 && room.enemies.includes(e));
+      // También asegurarse de que si había enemigos previos de la sala, deban ser derrotados
+      const livingRoomEnemies = room.enemies.filter(e => !e.markedForDeletion && e.hp > 0);
+      if (this.waveEnemies.length === 0 && livingRoomEnemies.length === 0) {
+        this.completeChallenge(room, player);
       }
     }
   }
@@ -150,70 +281,223 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
   activate(room, player) {
     this.isActive = true;
     this.wave = 1;
-    this.waveCheckTimer = 1.0;
+    this.state = 'PRE_WAVE_1';
+    this.timer = 0.9; // 0.9s de anticipación con portales visuales
 
-    // 1. Sellar las puertas de la sala
+    // 1. Sellar las puertas de la habitación
     room.cleared = false;
 
-    // 2. Banner / Toast
+    // 2. Banner y sonido
     if (player.ui) {
-      player.ui.showToast('⚔️ ¡DESAFÍO DE HORDAS INICIADO! Sobrevive a 2 oleadas de élites');
+      player.ui.showToast('⚔️ ¡DESAFÍO DE HORDAS ÉLITE INICIADO! Sobrevive a 2 Oleadas de Campeones');
+      player.ui.spawnFloatingText('⚔️ ¡DESAFÍO DE ÉLITES! ⚔️', '#ef4444', this.x, this.y - 35);
+    }
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('hurt', { volume: 0.9 });
+    }
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(12, 0.45);
     }
 
-    // 3. Sacudida de pantalla
-    if (window.CombatSystem) {
-      window.CombatSystem.triggerScreenShake(12, 0.4);
+    // 3. Partículas iniciales en el monolito
+    for (let i = 0; i < 30; i++) {
+      const ang = (i * Math.PI * 2) / 30;
+      const spd = 80 + Math.random() * 120;
+      room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 5, '#ef4444', 0.6);
     }
 
-    // 4. Spawn Ola 1 (4 Élites ágiles)
-    this.spawnWave1(room);
+    // 4. Preparar portales de invocación de la Ola 1
+    this.prepareWave1Portals(room, player);
   }
 
-  spawnWave1(room) {
-    if (!room) return;
-    const bounds = room.bounds || { left: 100, right: 800, top: 100, bottom: 600 };
-    const spawns = [
-      { x: bounds.left + 80, y: bounds.top + 80 },
-      { x: bounds.right - 80, y: bounds.top + 80 },
-      { x: bounds.left + 80, y: bounds.bottom - 80 },
-      { x: bounds.right - 80, y: bounds.bottom - 80 }
+  getSafeArenaSpawns(room, count) {
+    const b = room.bounds || { left: 100, right: 800, top: 100, bottom: 600, centerX: 450, centerY: 350 };
+    const pad = 90;
+    const candidates = [
+      { x: b.left + pad, y: b.top + pad },
+      { x: b.right - pad, y: b.top + pad },
+      { x: b.left + pad, y: b.bottom - pad },
+      { x: b.right - pad, y: b.bottom - pad },
+      { x: b.centerX - 160, y: b.centerY },
+      { x: b.centerX + 160, y: b.centerY }
     ];
+    return candidates.slice(0, count);
+  }
+
+  prepareWave1Portals(room, player) {
+    const spawns = this.getSafeArenaSpawns(room, 4);
+    this.spawnPortals = spawns.map(pos => ({
+      x: pos.x,
+      y: pos.y,
+      timer: 0.9,
+      maxTimer: 0.9,
+      radius: 26,
+      color: '#ef4444'
+    }));
+  }
+
+  spawnWave1(room, player) {
+    this.state = 'WAVE_1';
+    this.waveEnemies = [];
+
+    const EliteClass = window.EliteEnemy || (typeof EliteEnemy !== 'undefined' ? EliteEnemy : null);
+    const ChargerClass = window.ChargerEnemy || (typeof ChargerEnemy !== 'undefined' ? ChargerEnemy : null);
+    const ShooterClass = window.ShooterEnemy || (typeof ShooterEnemy !== 'undefined' ? ShooterEnemy : null);
+    const FallbackClass = window.Enemy || (typeof Enemy !== 'undefined' ? Enemy : null);
+
+    const spawns = this.getSafeArenaSpawns(room, 4);
+    const sec = room.sectionNumber || 1;
+    const lvl = room.levelNumber || 1;
+
+    // 2 Élites Reales con corona y stats multiplicadas
+    if (EliteClass) {
+      const e1 = new EliteClass(spawns[0].x, spawns[0].y, sec, lvl);
+      const e2 = new EliteClass(spawns[1].x, spawns[1].y, sec, lvl);
+      e1.speed = Math.min(320, e1.speed * 1.15);
+      e2.speed = Math.min(320, e2.speed * 1.15);
+      room.enemies.push(e1, e2);
+      this.waveEnemies.push(e1, e2);
+    } else if (FallbackClass) {
+      const e1 = new FallbackClass(spawns[0].x, spawns[0].y, sec, lvl, 'ERRATIC');
+      const e2 = new FallbackClass(spawns[1].x, spawns[1].y, sec, lvl, 'ERRATIC');
+      room.enemies.push(e1, e2);
+      this.waveEnemies.push(e1, e2);
+    }
+
+    // 1 Charger Enemy (Embestidor rápido)
+    if (ChargerClass) {
+      const c = new ChargerClass(spawns[2].x, spawns[2].y, sec, lvl);
+      c.speed = Math.min(340, c.speed * 1.2);
+      room.enemies.push(c);
+      this.waveEnemies.push(c);
+    }
+
+    // 1 Shooter Enemy (Francotirador de apoyo)
+    if (ShooterClass) {
+      const s = new ShooterClass(spawns[3].x, spawns[3].y, sec, lvl);
+      room.enemies.push(s);
+      this.waveEnemies.push(s);
+    }
+
+    // Ajuste dinámico de BrotherEye a cada enemigo de la horda
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      for (const mob of this.waveEnemies) {
+        BrotherEye.tuneSpawnedEnemy(mob);
+      }
+    }
+
+    // Sacudida, sonido y partículas de teletransporte
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(8, 0.3);
+    }
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('break_rock', { volume: 0.85 });
+    }
 
     for (const pos of spawns) {
-      if (typeof FastMeleeEnemy !== 'undefined') {
-        const mob = new FastMeleeEnemy(pos.x, pos.y, room.sectionNumber || 1, room.levelNumber || 1);
-        mob.speed = Math.min(260, mob.speed * 1.25);
-        room.enemies.push(mob);
-      }
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 15; i++) {
         const ang = Math.random() * Math.PI * 2;
-        room.spawnParticle(pos.x, pos.y, Math.cos(ang) * 90, Math.sin(ang) * 90, 4, '#ef4444', 0.4);
+        room.spawnParticle(pos.x, pos.y, Math.cos(ang) * 110, Math.sin(ang) * 110, 4.5, '#ef4444', 0.5);
       }
     }
   }
 
-  spawnWave2(room) {
+  prepareWave2Portals(room, player) {
+    if (player && player.ui) {
+      player.ui.showToast('⚠️ ¡OLA FINAL! 2 Colosos Élite y Acechadores emergen');
+      player.ui.spawnFloatingText('⚠️ ¡COLOSOS ÉLITE! ⚠️', '#dc2626', this.x, this.y - 35);
+    }
+    const b = room.bounds || { left: 100, right: 800, top: 100, bottom: 600, centerX: 450, centerY: 350 };
+    const spawns = [
+      { x: b.centerX - 140, y: b.centerY },
+      { x: b.centerX + 140, y: b.centerY },
+      { x: b.centerX, y: b.top + 80 },
+      { x: b.centerX, y: b.bottom - 80 }
+    ];
+    this.spawnPortals = spawns.map(pos => ({
+      x: pos.x,
+      y: pos.y,
+      timer: 0.9,
+      maxTimer: 0.9,
+      radius: 32,
+      color: '#a855f7'
+    }));
+  }
+
+  spawnWave2(room, player) {
     this.wave = 2;
-    if (window.activeGameInstance && window.activeGameInstance.player && window.activeGameInstance.player.ui) {
-      window.activeGameInstance.player.ui.showToast('⚠️ ¡OLA FINAL! 2 Campeones Colosales ingresan a la arena');
+    this.state = 'WAVE_2';
+    this.waveEnemies = [];
+
+    const EliteClass = window.EliteEnemy || (typeof EliteEnemy !== 'undefined' ? EliteEnemy : null);
+    const FlyerClass = window.FlyerEnemy || (typeof FlyerEnemy !== 'undefined' ? FlyerEnemy : null);
+    const SplitterClass = window.SplitterEnemy || (typeof SplitterEnemy !== 'undefined' ? SplitterEnemy : null);
+    const FallbackClass = window.Enemy || (typeof Enemy !== 'undefined' ? Enemy : null);
+
+    const b = room.bounds || { left: 100, right: 800, top: 100, bottom: 600, centerX: 450, centerY: 350 };
+    const spawns = [
+      { x: b.centerX - 140, y: b.centerY },
+      { x: b.centerX + 140, y: b.centerY },
+      { x: b.centerX, y: b.top + 80 },
+      { x: b.centerX, y: b.bottom - 80 }
+    ];
+    const sec = room.sectionNumber || 1;
+    const lvl = room.levelNumber || 1;
+
+    // 2 Colosos Élite Titan (radio 24, +60% HP, corona dorada)
+    if (EliteClass) {
+      const boss1 = new EliteClass(spawns[0].x, spawns[0].y, sec, lvl);
+      const boss2 = new EliteClass(spawns[1].x, spawns[1].y, sec, lvl);
+      boss1.radius = 24;
+      boss1.maxHp = Math.round(boss1.maxHp * 1.6);
+      boss1.hp = boss1.maxHp;
+      boss1.color = '#7e22ce';
+
+      boss2.radius = 24;
+      boss2.maxHp = Math.round(boss2.maxHp * 1.6);
+      boss2.hp = boss2.maxHp;
+      boss2.color = '#7e22ce';
+
+      room.enemies.push(boss1, boss2);
+      this.waveEnemies.push(boss1, boss2);
+    } else if (FallbackClass) {
+      const boss1 = new FallbackClass(spawns[0].x, spawns[0].y, sec, lvl, 'ERRATIC');
+      const boss2 = new FallbackClass(spawns[1].x, spawns[1].y, sec, lvl, 'ERRATIC');
+      room.enemies.push(boss1, boss2);
+      this.waveEnemies.push(boss1, boss2);
     }
 
-    const bounds = room.bounds || { left: 100, right: 800, top: 100, bottom: 600 };
-    const spawns = [
-      { x: bounds.centerX - 120, y: bounds.centerY },
-      { x: bounds.centerX + 120, y: bounds.centerY }
-    ];
+    // 2 Apoyos ágiles (Flyer o Splitter)
+    if (FlyerClass) {
+      const f1 = new FlyerClass(spawns[2].x, spawns[2].y, sec, lvl);
+      room.enemies.push(f1);
+      this.waveEnemies.push(f1);
+    }
+    if (SplitterClass) {
+      const s1 = new SplitterClass(spawns[3].x, spawns[3].y, sec, lvl, false);
+      room.enemies.push(s1);
+      this.waveEnemies.push(s1);
+    }
+
+    // Ajuste dinámico de BrotherEye a la ola final
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      for (const mob of this.waveEnemies) {
+        BrotherEye.tuneSpawnedEnemy(mob);
+      }
+    }
+
+    // Tremor de pantalla y sonido de impacto brutal
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(14, 0.45);
+    }
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('explosion', { volume: 0.9 });
+    }
 
     for (const pos of spawns) {
-      if (typeof TankEnemy !== 'undefined') {
-        const mob = new TankEnemy(pos.x, pos.y, room.sectionNumber || 1, room.levelNumber || 1);
-        mob.maxHp = Math.round(mob.maxHp * 1.4);
-        mob.hp = mob.maxHp;
-        room.enemies.push(mob);
-      }
-      for (let i = 0; i < 14; i++) {
+      for (let i = 0; i < 20; i++) {
         const ang = Math.random() * Math.PI * 2;
-        room.spawnParticle(pos.x, pos.y, Math.cos(ang) * 120, Math.sin(ang) * 120, 5, '#dc2626', 0.5);
+        room.spawnParticle(pos.x, pos.y, Math.cos(ang) * 130, Math.sin(ang) * 130, 5, '#a855f7', 0.6);
       }
     }
   }
@@ -221,24 +505,49 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
   completeChallenge(room, player) {
     this.completed = true;
     this.isActive = false;
+    this.state = 'COMPLETED';
+    this.wave = 3;
 
-    // 1. Desbloquear las puertas
+    // 1. Desbloquear las puertas de la habitación
     room.cleared = true;
 
     // 2. Spawnear Cofre del Gran Campeón en el centro
     room.hazards = room.hazards.filter(h => h !== this);
-    room.hazards.push(new ChampionChest(this.x, this.y));
+    const chest = new ChampionChest(this.x, this.y);
+    room.hazards.push(chest);
 
-    // 3. Toast de Victoria
-    if (player && player.ui) {
-      player.ui.showToast('👑 ¡DESAFÍO SUPERADO! Abre el Cofre del Campeón [E]');
+    // 3. Notificar a BrotherEye, Arquetipos y Auto-Guardado
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
+      BrotherEye.onRoomExited(room, player, true);
+    }
+    if (window.PIG_ARCHETYPES && player && player.archetype && window.PIG_ARCHETYPES[player.archetype]?.onRoomCleared) {
+      window.PIG_ARCHETYPES[player.archetype].onRoomCleared(player, room);
+    }
+    if (window.RunSaveManager && window.activeGameInstance) {
+      window.RunSaveManager.save(window.activeGameInstance);
     }
 
-    // 4. Celebración visual
-    for (let i = 0; i < 36; i++) {
-      const ang = (i * Math.PI * 2) / 36;
-      const spd = 100 + Math.random() * 160;
-      room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 5.5, '#fbbf24', 0.7);
+    // 4. Banner de victoria y Game Juice
+    if (player && player.ui) {
+      player.ui.showToast('👑 ¡DESAFÍO SUPERADO! Abre el Cofre del Gran Campeón [E]');
+      player.ui.spawnFloatingText('👑 ¡DESAFÍO SUPERADO! 👑', '#facc15', this.x, this.y - 35);
+      player.ui.updateRoomInfo(room, window.activeGameInstance ? window.activeGameInstance.currentFloor : null);
+    }
+
+    if (window.activeGameInstance) {
+      window.activeGameInstance.triggerScreenShake(10, 0.4);
+    }
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('pedestal', { volume: 1.0 });
+      soundManager.playProcedural('coin', { volume: 0.8 });
+    }
+
+    // 5. Celebración visual con fuegos artificiales de partículas
+    for (let i = 0; i < 45; i++) {
+      const ang = (i * Math.PI * 2) / 45;
+      const spd = 120 + Math.random() * 180;
+      room.spawnParticle(this.x, this.y, Math.cos(ang) * spd, Math.sin(ang) * spd, 5.5, '#fbbf24', 0.8);
+      room.spawnParticle(this.x, this.y, Math.cos(ang) * (spd * 0.6), Math.sin(ang) * (spd * 0.6), 4.5, '#ef4444', 0.8);
     }
   }
 
@@ -247,7 +556,29 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
     ctx.save();
     const floatY = Math.sin(this.pulseTimer) * 4;
 
-    // Aura carmesí
+    // Dibujar portales de invocación que se estén cargando
+    for (const portal of this.spawnPortals) {
+      const progress = 1 - Math.max(0, portal.timer / portal.maxTimer);
+      const pulse = Math.sin(portal.pulse || 0) * 3;
+      const r = (portal.radius * progress) + pulse;
+
+      ctx.beginPath();
+      ctx.arc(portal.x, portal.y, Math.max(4, r), 0, Math.PI * 2);
+      ctx.strokeStyle = portal.color || '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      ctx.arc(portal.x, portal.y, Math.max(2, r * 0.5), 0, Math.PI * 2);
+      ctx.fillStyle = portal.color || '#ef4444';
+      ctx.globalAlpha = 0.25 * progress;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    }
+
+    // Aura carmesí alrededor del monolito
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius + 14, 0, Math.PI * 2);
     ctx.fillStyle = this.isActive ? 'rgba(239, 68, 68, 0.35)' : 'rgba(220, 38, 38, 0.18)';
@@ -265,9 +596,21 @@ var ChallengeMonolith = class ChallengeMonolith extends BaseEntity {
     ctx.arc(this.x, this.y + floatY, 7, 0, Math.PI * 2);
     ctx.fillStyle = this.isActive ? '#facc15' : '#ef4444';
     ctx.fill();
+
+    // Anillo exterior de runas cuando está activo
+    if (this.isActive) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y + floatY, 18, 0, Math.PI * 2);
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     ctx.restore();
   }
-}
+};
 
 /**
  * Altar del Pacto de Sangre (BloodPactAltar)

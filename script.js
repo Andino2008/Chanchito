@@ -4534,6 +4534,18 @@ class ChargerEnemy extends Enemy {
   }
 }
 
+window.Enemy = Enemy;
+window.ShooterEnemy = ShooterEnemy;
+window.SplitterEnemy = SplitterEnemy;
+window.EliteEnemy = EliteEnemy;
+window.FlyerEnemy = FlyerEnemy;
+window.ChargerEnemy = ChargerEnemy;
+window.Coin = Coin;
+window.VoidGem = VoidGem;
+window.KeyItem = KeyItem;
+window.HeartItem = HeartItem;
+window.ItemPedestal = ItemPedestal;
+
 class CrackedGroundHazard extends Entity {
   constructor(x, y, radius = 44, damage = 20, delay = 0.5) {
     super(x, y, radius, '#ef4444');
@@ -8945,7 +8957,8 @@ class Room {
       this.enemies.push(...newlySpawnedEnemies);
     }
 
-    if (!this.cleared && this.enemies.length === 0) {
+    const hasActiveChallenge = Boolean(this.hazards && this.hazards.some(h => typeof ChallengeMonolith !== 'undefined' && h instanceof ChallengeMonolith && h.isActive));
+    if (!this.cleared && this.enemies.length === 0 && !hasActiveChallenge) {
       this.cleared = true;
       if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
         BrotherEye.onRoomExited(this, player, true);
@@ -9224,6 +9237,23 @@ class Room {
               costColor: '#f87171',
               interact: (p, r) => {
                 haz.interact(p, r);
+              }
+            };
+          }
+        }
+        if (typeof ChampionChest !== 'undefined' && haz instanceof ChampionChest) {
+          if (!haz.opened && d <= 65 && d < closestDist) {
+            closestDist = d;
+            closest = {
+              entity: haz,
+              x: haz.x,
+              y: haz.y,
+              title: '👑 COFRE DEL GRAN CAMPEÓN',
+              desc: 'Botín Supremo: +50 Oro, +25 Gemas y Reliquia de Élite',
+              cost: 'ABRIR [E]',
+              costColor: '#facc15',
+              interact: (p, r) => {
+                haz.open(p, r);
               }
             };
           }
