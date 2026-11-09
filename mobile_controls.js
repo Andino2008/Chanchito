@@ -36,7 +36,7 @@
   window.mobileTouchControls = mobileState;
 
   // Parámetros de sensibilidad y zona muerta
-  const JOYSTICK_MAX_RADIUS = 52;
+  const JOYSTICK_MAX_RADIUS = 42;
   const AIM_DEADZONE = 10;
   const AUTO_AIM_SCAN_RADIUS = 750;
 
