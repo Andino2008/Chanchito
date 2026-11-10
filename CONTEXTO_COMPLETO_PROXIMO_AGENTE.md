@@ -1,6 +1,6 @@
 # MANUAL DE ARQUITECTURA, MECÁNICAS Y CONTEXTO MAESTRO (v2.2)
 > **Directorio del Proyecto:** `C:\experimentoweb`  
-> **Versión Actual:** `v2.2` (HUD Minimalista Flotante, Arena Completa, Habitaciones Personalizadas y 75 Reliquias)  
+> **Versión Actual:** `v2.8` (Edición Móvil/Tablet Twin-Stick Dinámico, Bucle de Monetización Ética, Arquetipos y 75 Reliquias)  
 > **Tecnologías:** Vanilla JavaScript (ES6+), HTML5 Canvas 2D, CSS3 (Glassmorphism, Flexbox, Grid), Web Audio API / Audio HTML5.  
 > **Dependencias Externas:** CERO frameworks, CERO librerías externas, CERO compiladores (Webpack, Vite o Babel). Ejecutable de forma inmediata abriendo `index.html` en cualquier navegador web moderno.
 
@@ -44,7 +44,13 @@ Para mantener la integridad, estabilidad y rendimiento del juego, cualquier agen
 
 ```
 C:\experimentoweb\
-├── index.html                   # Shell HTML5, capas del HUD flotante, modal TAB, menú de pausa y CSS completo.
+├── index.html                   # Shell de escritorio (PC), capas HUD, modal TAB, pausa y banner detector móvil.
+├── index_mobile.html            # Shell dedicado Móvil y Tablet (Twin-Stick flotante, HUD ultra-limpio, fullscreen/landscape).
+├── mobile_controls.js           # Módulo de controles táctiles: joysticks dinámicos 360°, auto-aim asistido y selector de altura.
+├── mobile_features.js           # Bucle móvil ético: AdManager (simulador de anuncios), arquetipos, resurrección abisal y guardado.
+├── dev_console.js               # Consola de diagnóstico, telemetría de BrotherEye y herramientas de rescate (tecla F2).
+├── manifest.json                # PWA Web App Manifest (display fullscreen, orientation landscape).
+├── icon-192.svg / icon-512.svg  # Iconos vectoriales de la PWA del cerdito.
 ├── combat.js                    # Módulo desacoplado de combate visceral (COMBAT_CONFIG y CombatSystem).
 ├── evolutions.js                # Módulo desacoplado de evoluciones de armas (EVOLUTION_DEFS y EvolutionManager).
 ├── transmutation.js             # Módulo desacoplado de reciclaje y forja de reliquias (Yunque Transmutador).
@@ -53,8 +59,8 @@ C:\experimentoweb\
 ├── events.js                    # Módulo desacoplado de salas de desafío, monolitos y altares de sangre.
 ├── BrotherEye.js                 # Módulo de Dificultad Adaptativa Inteligente (DDA) basado en telemetría de entrada/salida.
 ├── relics.js                    # Catálogo maestro de las 75 reliquias, ItemManager y sistema de Hooks.
-├── script.js                    # Motor central, Game Loop, entidades, armas, jefes, salas, Input y UIManager.
-├── CONTEXTO_PROYECTO.md         # Documento de contexto y registro histórico de versiones.
+├── script.js                    # Motor central, Game Loop, entidades, armas, jefes, salas, InputManager y UIManager.
+├── CONTEXTO_COMPLETO_PROXIMO_AGENTE.md # Este documento maestro de arquitectura y contexto continuo.
 ├── cinematica/
 │   ├── cinematica inicial.mp4   # Video de introducción narrativa que reproduce al inicio (salto con ENTER).
 │   ├── foto del inicio del juego.jpg # Imagen de portada de alta resolución para el menú inicial.
@@ -398,3 +404,101 @@ En la carpeta `<appDataDir>\brain\<conversation-id>\scratch\` se encuentran los 
   * **Prioridad de Tecla `KeyE`:** Al presionar `E` cerca de un interactuable, se ejecuta la interacción prioritariamente y NO cambia de arma.
   * **Cero Compras / Activaciones Accidentales:** Caminar sobre altares, monolitos o tiendas ya no auto-compra ni activa eventos por colisión fortuita; requiere presionar `[E]` o hacer clic en el prompt.
 * **Limpieza de Pantalla:** Se ocultó `#btn-sanctuary-quick` durante el combate activo (`display: none !important;`) para no saturar la pantalla con menús de meta-progreso durante la partida.
+
+
+---
+
+## 15. SISTEMA DE MONETIZACIÓN ÉTICA, BUCLE MÓVIL Y ARQUETIPOS (`mobile_features.js` v2.6)
+
+Diseñado específicamente para el bucle de juego de **5 a 10 minutos** (esperando el colectivo o el médico), asegurando que el juego sea divertido, justo y libre de pay-to-win.
+
+### 15.1 Simulador de Anuncios Recompensados Éticos (`AdManager`)
+* **CERO Anuncios Invasivos:** Cero banners molestos, cero popups forzados en medio del gameplay. Todos los anuncios son **100% optativos**.
+* **Simulador Modal Integrado (`#ad-simulator-modal`):**
+  * Simula un anuncio breve de 5 segundos con barra de progreso fluida y descripción narrativa temática ("Sintonizando transmisión del abismo...").
+  * Permite cancelar sin penalización (`ad-sim-btn-cancel`).
+  * Otorga recompensas de alto valor: duplicar gemas al morir/ganar, giros gratuitos en el oráculo del santuario, o abrir un maletín de rescate.
+
+### 15.2 Sistema de Arquetipos de Chanchitos (`PIG_ARCHETYPES`)
+Personalidades y estilos de juego desbloqueables desde el Santuario:
+1. **Classic Pig (Cerdito Aventurero):** Balance estándar (100 HP, 2 Dashes, sin modificadores negativos).
+2. **Berserker Hog (Jabalí Furia Sangrienta):** +35% Daño base, +10% Velocidad, pero -20 Max HP y no puede equipar escudos pasivos.
+3. **Cyber-Pig (Tecno-Cerdito Blindado):** Comienza con +40 Escudo de energía, regeneración pasiva de escudo cada 12s y Afinidad Eléctrica Lv.1.
+4. **Golden Tycoon (Chanchito Magnate):** Inicia la run con 80 🪙 Oro y 3 🔑 Llaves; +25% de oro en cofres, pero las tiendas son un 15% más caras.
+5. **Cinder Demon (Demonio de las Cenizas):** Fija Max HP en 65, pero otorga 3 cargas de Esquiva instantáneas, rastro de fuego ardiente y Afinidad Fuego Lv.1.
+
+### 15.3 Resurrección Abisal de Emergencia (`ReviveManager`)
+* **1 Sola Resurrección por Partida:** Al morir por primera vez, el juego pausa y abre `#revive-modal`.
+* El jugador puede revivir mediante **Anuncio Simulado** o gastando **Gemas del Vacío** acumuladas.
+* Al resucitar: restaura el **60% del HP máximo**, repele a todos los enemigos cercanos con una onda expansiva y otorga **3 segundos de invulnerabilidad total**.
+* Una segunda muerte dispara el Game Over definitivo (`hasUsedAbyssalRevive = true`).
+
+### 15.4 Guardado y Reanudación de Partida en Curso (`RunSaveManager`)
+* Permite pausar y tocar "GUARDAR Y SALIR" (`btn-pause-save-quit`) para cerrar el navegador sin perder el progreso de una run.
+* Guarda de forma atómica en `localStorage` (`roguelike_active_run_save`): HP, Escudo, Oro, Llaves, Gemas, Reliquias equipadas con sus niveles, Arma activa con su modo, y el Nivel / Sección actual.
+* Al abrir el juego, el Menú Principal detecta la partida y muestra el botón dorado pulsante **`▶ CONTINUAR PARTIDA`** con el resumen de la run guardada.
+
+---
+
+## 16. CORRECCIÓN DE FÍSICAS, RENDERIZADO Y PREVENCIÓN DE BUGS VISUALES
+
+Para evitar que regresen problemas históricos de renderizado y colisión en el motor Canvas:
+
+1. **Screen-Shake Clamping Seguro en `Game.draw`:**
+   * Cuando se produce un screen shake extremo (sacudida por explosiones de jefes o impactos críticos de 25+ píxeles), las coordenadas de renderizado del canvas se recalculan garantizando que nunca se produzcan artefactos de arrastre (*smearing*) ni que los bordes de la sala se "pinten" con estelas de partículas.
+   * `ctx.clearRect(0, 0, canvas.width, canvas.height)` se ejecuta en cada ciclo de dibujado antes de aplicar la transformación de cámara.
+2. **Corte Balístico de Mega Haz en Paredes (`MathUtils.getRayWallIntersection`):**
+   * El Mega Láser (modo secundario del Rayo Láser) proyecta un rayo continuo que ahora se frena físicamente en el límite interior de la sala (`room.bounds`).
+   * No atraviesa muros exteriores ni sangra colores sobre los bordes negros externos.
+3. **Monolito de Combate Élite 100% Funcional (`events.js`):**
+   * Se corrigió el bug histórico donde presionar el monolito no generaba enemigos y dejaba un cofre de la nada.
+   * Ahora genera 2 oleadas completas de enemigos élites y colosos reales (`waveEnemies`), sella las 4 puertas de la sala con barrotes durante el combate (`cleared = false`), y solo al vencer a todos los enemigos genera el **Cofre del Campeón** y reabre las puertas.
+4. **Candados y Puertas con Colisión Sólida Real:**
+   * Los cofres bloqueados (`LockedChest`) y las puertas cerradas (`Door`) tienen colisión elástica sólida: el cerdito no puede atravesarlos ni "clipear" en las paredes.
+   * Solo se abren deliberadamente al presionar `[E]` o forzarlos con sangre (`-15 HP`).
+
+---
+
+## 17. EDICIÓN MÓVIL Y TABLET DEDICADA (`index_mobile.html`, `mobile_controls.js`, `manifest.json` v2.8)
+
+El juego cuenta con una versión móvil y tablet 100% nativa e independiente, desplegada públicamente en:
+👉 **`https://andino2008.github.io/Chanchito/index_mobile.html`**
+
+### 17.1 Arquitectura Twin-Stick Flotante Dinámica (360°)
+* **Mitad Izquierda (0% - 50% de la pantalla) — Movimiento Dinámico:**
+  * Zona táctil libre (`#mobile-zone-left`).
+  * Donde sea que el jugador apoye su pulgar izquierdo (en celular o tablet), ahí mismo se ancla el joystick analógico `#mobile-stick-base-move`.
+  * Deslizar mueve al cerdito suavemente en 360°. Al levantar el pulgar, el stick se desvanece y la velocidad se resetea a cero.
+* **Mitad Derecha (50% - 100% de la pantalla) — Apuntado y Disparo Dinámico:**
+  * Zona táctil libre (`#mobile-zone-right`).
+  * **Cero botones rígidos**: Al igual que la izquierda, el joystick de apuntado `#mobile-stick-base-aim` se ancla automáticamente donde el pulgar derecho toca la pantalla.
+  * **Auto-Aim Asistido Inteligente (Tap / Mantener sin arrastrar):** Si el jugador toca o mantiene el pulgar en el lugar (desplazamiento < 8px), el motor escanea la sala en busca del enemigo vivo más cercano y apunta/dispara automáticamente hacia él en tiempo real.
+  * **Apuntado Manual 360° (Arrastrar):** Si el jugador desliza el pulgar más de 8px (zona muerta ultra-sensible), el apuntado pasa a ser 100% manual en el ángulo exacto del dedo.
+
+### 17.2 Botones de Acción Chunky y Altamente Sensibles
+Ubicados en la zona lateral derecha, con volumen generoso y respuesta instantánea:
+* **`⚡ DASH` (`#btn-touch-dodge`):** Botón circular grande de 66px con borde neón reforzado y contador de cargas en tiempo real (`x2`). Tocarlo activa la esquiva y consume la carga atómicamente con vibración háptica (`navigator.vibrate(25)`).
+* **`⚡ MODO` (`#btn-touch-mode`):** Botón amplio y acolchado en oro neón para alternar el modo secundario de disparo (`[ESPACIO]`).
+* **`🔄 ARMA` (`#btn-touch-swap`):** Botón en púrpura neón para rotar al instante entre las armas desbloqueadas (`[Q/E]`).
+* **`🖐️ INTERACTUAR` (`#btn-touch-interact`):** Botón contextual verde esmeralda que late e ilumina solo cuando el cerdito está cerca de un cofre, puerta, yunque o monolito, permitiendo abrirlo con un toque sin superponerse con ningún otro elemento.
+
+### 17.3 Selector Rápido de Altura Ergonómica (`🕹️ ALTURA`)
+* En la barra superior móvil (`#mobile-top-bar`) se encuentra el botón de ajuste ergonómico:
+  * **`ALTURA: MEDIA` (Predeterminada):** Posiciona el cluster de botones a media altura vertical (`bottom: clamp(75px, 25vh, 220px)`), donde reposan naturalmente los pulgares al sostener el dispositivo con ambas manos.
+  * **`ALTURA: ALTA (TABLET)`:** Eleva los controles hacia el centro vertical (`bottom: clamp(130px, 40vh, 360px)`), diseñado para tablets de 10" o 12" donde el agarre lateral es más elevado.
+  * **`ALTURA: BAJA`:** Ubica los controles abajo en la esquina (`bottom: 14px`), ideal para jugar con una sola mano en celulares pequeños.
+* La preferencia se guarda automáticamente en `localStorage` (`mobile_controls_height`).
+
+### 17.4 Despeje Radical del HUD (Esquinas Superiores 100% Visibles)
+* **Eliminación del Dock de Armas en Combate:** Se ocultó `#hud-bottom` en móvil (`display: none !important;`). Toda la información de armas y esquiva se encuentra en los botones táctiles y en el menú de pausa/mochila.
+* **Micro-Barra de Vida y Recursos:** Pegada al borde superior izquierdo (`top: 4px; left: 4px;`), con una altura de tan solo 5px para la barra de vida, asegurando que **la esquina superior izquierda de la arena quede totalmente visible**.
+* **Minimapa Micro-Radar Translúcido:** En el borde superior derecho (`top: 4px; right: 4px;`), con un tamaño de 65x38px y opacidad reducida al 45%, permitiendo ver a través de él para no perder de vista enemigos o proyectiles en la esquina superior derecha.
+* **Ocultación de Telemetría:** Se ocultó el pill de telemetría de consola F2 en móvil.
+
+### 17.5 Manejo de Orientación Horizontal (Landscape) y PWA
+1. **Fullscreen & Orientation Gate:** Pantalla de bienvenida al cargar (`#mobile-fullscreen-entry`) que solicita pantalla completa y bloquea la orientación en horizontal (`screen.orientation.lock('landscape')`).
+2. **Protector de Giro (`#mobile-rotate-overlay`):** Si el jugador gira el teléfono a posición vertical, se despliega una pantalla de aviso pidiendo girar el dispositivo y **pausa automáticamente la partida**.
+3. **PWA Instalable:** Archivo `manifest.json` e iconos vectoriales `icon-192.svg` y `icon-512.svg` con `"display": "fullscreen"` y `"orientation": "landscape"`, permitiendo instalar el juego en la pantalla de inicio de Android y iOS como una app nativa sin barras de navegación.
+4. **Detector en Versión de Escritorio:** En `index.html`, un banner flotante inteligente detecta si el usuario ingresó desde un celular y le ofrece pasar a `index_mobile.html` con un solo clic.
+
+---
