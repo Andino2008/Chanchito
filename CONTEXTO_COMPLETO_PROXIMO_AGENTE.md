@@ -1,6 +1,6 @@
-# MANUAL DE ARQUITECTURA, MECÁNICAS Y CONTEXTO MAESTRO (v2.2)
+# MANUAL DE ARQUITECTURA, MECÁNICAS Y CONTEXTO MAESTRO (v3.1)
 > **Directorio del Proyecto:** `C:\experimentoweb`  
-> **Versión Actual:** `v2.8` (Edición Móvil/Tablet Twin-Stick Dinámico, Bucle de Monetización Ética, Arquetipos y 75 Reliquias)  
+> **Versión Actual:** `v3.1` (Arquitectura Modular de Armas Plug & Play `weapons.js`, Plantillas de Sala 13x9 y Rework de Jefes)  
 > **Tecnologías:** Vanilla JavaScript (ES6+), HTML5 Canvas 2D, CSS3 (Glassmorphism, Flexbox, Grid), Web Audio API / Audio HTML5.  
 > **Dependencias Externas:** CERO frameworks, CERO librerías externas, CERO compiladores (Webpack, Vite o Babel). Ejecutable de forma inmediata abriendo `index.html` en cualquier navegador web moderno.
 
@@ -500,5 +500,71 @@ Ubicados en la zona lateral derecha, con volumen generoso y respuesta instantán
 2. **Protector de Giro (`#mobile-rotate-overlay`):** Si el jugador gira el teléfono a posición vertical, se despliega una pantalla de aviso pidiendo girar el dispositivo y **pausa automáticamente la partida**.
 3. **PWA Instalable:** Archivo `manifest.json` e iconos vectoriales `icon-192.svg` y `icon-512.svg` con `"display": "fullscreen"` y `"orientation": "landscape"`, permitiendo instalar el juego en la pantalla de inicio de Android y iOS como una app nativa sin barras de navegación.
 4. **Detector en Versión de Escritorio:** En `index.html`, un banner flotante inteligente detecta si el usuario ingresó desde un celular y le ofrece pasar a `index_mobile.html` con un solo clic.
+
+---
+
+## 18. REWORK INTEGRAL DE JEFES, TENACIDAD, LEGIBILIDAD Y PERFECT DODGE (v2.9)
+
+### 18.1 Corrección Anti-Evaporación ("Por qué se morían fácil")
+* **Tenacidad Elemental de Jefes (`Enemy.applyElementalEffect` & `Boss.applyDoTDamage` en `script.js`):**
+  * **`MIRACLE`:** Dejó de ejecutar instantáneamente al Jefe (`this.hp = 0`). En su lugar aplica **Discordia Astral (`MIRACLE_BOSS`)** durante `3.0s` con ticks periódicos cada `0.75s`.
+  * **`ELECTRIC`:** Dejó de arrancar `30% maxHp` por proc y paralizar la FSM (`1.5s`). En Jefes inflige máx. `4% maxHp` acotado y aplica `BOSS_SLOW` (`0.72x` vel por `0.95s`) con `3.5s` de inmunidad interna a nuevo slow.
+  * **`ICE`:** `maxFreezeMeter = 220` para Jefes (`36` por proc), freeze máximo `0.55s` + `BOSS_SLOW` (`0.65x` por `1.8s`) y `5.0s` de inmunidad interna. Inmune bajo tierra, en guardia o durante invulnerabilidad.
+  * **`BLEED` y `FIRE`:** Limitados en Jefes (`máx 6 stacks` de sangrado con desplazamiento computable topeado a `260 * dt`, fuego topeado a `85 * levelMult` DPS con duración `5.0s`). Todos los DoTs pasan por `Boss.applyDoTDamage()`, respetando `isBurrowed`, `isGuarding` e `invulnerableTimer`.
+* **Phase Gate estricto al 50% HP (`Boss.handlePhaseGateAndHealthClamp`):** Ningún impacto o DoT puede saltar la Fase 2; si un golpe excede el 50%, la salud se clava exactamente en `Math.ceil(maxHp * 0.5)`, limpia efectos de CC activos (`ELECTRIC`, `ICE`, `MIRACLE`, `BOSS_SLOW`) y dispara `bossPhaseManager.triggerPhaseShift()`.
+* **Soft Boss Armor (`Boss.applyBurstCappedDamage`):** Ventana deslizante de DPS esperado (`Math.max(105, maxHp * 0.14)`). Builds normales no sufren mitigación (`1.0x`), pero bursts extremos por encima del umbral se suavizan hacia un mínimo del `24%` para evitar combates de 2 segundos.
+* **Curva de HP Base + BrotherEye (`boss_phases.js` & `BrotherEye.js`):** Se eliminó el recorte `-22% HP` en `tuneBossHp` y se reemplazó por `+15% HP` base. Además, `BrotherEye.tuneBossForPlayerBuild()` escala orgánicamente al Jefe (`1.15x`–`1.65x`) cuando el jugador llega con build rota en `ACOMPAÑAR_BUILD` o `PIES_EN_LA_TIERRA`.
+
+### 18.2 Legibilidad Visual y Jerarquía de Capas (`script.js` & `boss_phases.js`)
+* **Reparación de Renderizado en `boss_phases.js`:** Corregidos strings `rgba(...)` rotos en `AbyssalGeyserHazard.draw` y `CelestialJudgmentPillar.draw`.
+* **Wind-up Corporal Procedural (`Boss.drawBodyShape` & `Boss.setWindup`):** Todo telegrafiado aplica compresión/estiramiento (`squash & stretch`), vibración progresiva, aviso sonoro `'telegraph'`, destello blanco al llegar al `82%` (`'boss_flash'`) y contorno cian jadeante durante estados de fatiga (`isStaggered`).
+* **Proyectiles y Capas (`EnemyProjectile.draw` & `Room.draw`):** Balas enemigas ahora poseen halo exterior + borde `#090d16` + núcleo brillante. En `BossRoom` activa, partículas y proyectiles del jugador se atenúan a `0.78` alpha y las balas enemigas se renderizan siempre encima de los jefes.
+* **Códigos de Telegrafiado (`Boss.drawTelegraphs`):** Ámbar/blanco (`IMPACT`), cian (`TELEPORT`), dorado (`GUARD`), flechas direccionales geométricas en líneas de embestida y resaltado de arista activa.
+
+### 18.3 Movimiento Táctico, Perfect Dodge y Ventanas de Castigo (`combat.js` & los 4 Jefes)
+* **Perfect Dodge (`CombatSystem.triggerPerfectDodge`):** Atravesar `EnemyProjectile`, `BossShockwaveHazard` o `ExpandingRingHazard` en I-Frames de Dash reembolsa `0.95s` de CD de Dash (pudiendo devolver la carga al instante) y activa `1.6s` de **Adrenalina** (`+25%` velocidad mov, `+20%` velocidad ataque).
+* **Dash Mejorado + Post-Dash Glide:** `DASH_DURATION = 0.20s`, `DASH_I_FRAMES = 0.30s`, `DASH_GLIDE_DURATION = 0.12s` de inercia de salida, `dodgeCooldownEmpty` reducido de `2.5s` a `1.95s` e inmunidad total a slows/succión mientras dashea.
+* **Ventanas de Castigo (`+25%` Daño recibido) y Balance por Jefe:**
+  * **Goliat:** `hammerRadius = 140px`, choque contra muro en `P1_WALL_DASH` lo aturde en `P1_WALL_STUNNED` (`1.45s`, sin escudo frontal) y añade `P2_RING_LAND_RECOVERY` (`1.45s`) tras aterrizar en Fase 2.
+  * **Némesis:** `GravityZoneHazard` posee `0.58s` de gracia previa antes de frenar, `NemesisDarkClone` aumenta su delay a `1.35s` con pausas cada `4s`, los 4 escudos orbitales respiran (`72px` <-> `142px`) para abrir paso melee, y descansa en `P1/P2_OCULAR_RECOVERY` (`1.25s`).
+  * **Abismo:** `emergeRadius = 124px`, `P2_AMBUSH_TELEGRAPH` subido de `0.62s` a `0.82s`, succión reducida a `130 px/s` e ignorada durante Dash, más pausas `P1_BITE_RECOVERY` (`1.25s`) y `P2_EXHAUSTED_SURFACE` (`1.55s`).
+  * **Serafín:** Sello visual de destino en `P1_SPEAR_PREP`, lanza a `0.68s` (`1120 px/s`), pre-aviso `P1/P2_GUARD_WINDUP` antes de volverse reflectivo, Combo Triangular en `0.52s` (`1050 px/s`), `P2_SERAPH_RECOVERY` (`1.25s`) y 6 espadas escalonadas rítmicamente.
+
+---
+
+## 19. SISTEMA DE PLANTILLAS DE SALA (13x9), SECCIONES MULTI-SALA Y EDITOR EN VIVO (v3.0)
+
+### 19.1 Módulo `level_templates.js` (`window.LevelTemplateSystem`)
+* **Problema resuelto:** La generación previa tiraba 2–3 rocas y ~8 enemigos en coordenadas flotantes 100% aleatorias, haciendo que las salas se sintieran vacías (sin cobertura táctica real) y forzando al jugador a retroceder siempre a la defensiva sin poder reconocer patrones.
+* **Grilla Táctica `13x9` (`BUILTIN_ROOM_TEMPLATES`):**
+  * Divide el salón jugable (`864x544 px`) en `13` columnas (`0..12`) x `9` filas (`0..8`), donde el centro `(6, 4)` coincide exactamente con `(480, 320)` y las puertas caen en `(6,0)`, `(6,8)`, `(0,4)` y `(12,4)`.
+  * **Símbolos soportados:** `.` (Piso), `#` (`RockObstacle`), `O` (`PotObstacle`), `~` (`RoomPit` con fusión automática de rectángulos contiguos), `^` (`SpikeTrap` con desfase rítmico), `*` (`FireZone`), `%` (`PoisonPuddle`), `S` (`ShooterEnemy`), `C` (`ChargerEnemy`), `F` (`FlyerEnemy`), `P` (`SplitterEnemy`), `E` (`Enemy`), `X` (`EliteEnemy`), `?` (Enemigo comodín en posición fija).
+  * Incluye **16 plantillas de autor preconstruidas** (*Los 4 Pilares, Trinchera Partida, Puente del Abismo, Bastión en Cruz, Galería de Tiro, Anillo de Fuego, Bodega de Vasijas, Islas Gemelas, El Búnker Central, Pasillo de Pinchos, Ciénaga Tóxica, Coliseo de Sangre, Emboscada Diagonal, Columnata Antigua, Rotonda Abisal, Cámara de Incubación*) con soporte de espejado simétrico (`allowFlipX`, `allowFlipY`).
+* **Secciones Multi-Sala (`BUILTIN_FLOOR_SECTIONS`):**
+  * Define secuencias de 2 a 3 salas conectadas (ej. *El Guantelete del Botín*, *Sendero al Santuario*, *Asalto al Búnker*, *Paso de la Caldera*, *Encrucijada del Abismo*) que `DungeonFloor.generate()` estampa en el mapa antes de correr el *Random Walker*.
+* **Mezcla Híbrida (`75%` Autor / `25%` Procedural Estructurado):**
+  * El `75%` de las salas de combate usan plantillas `13x9` del catálogo.
+  * El `25%` restante usa `LevelTemplateSystem.generateStructuredObstaclesForRoom(room)`, que construye parapetos en L, muros gemelos o diamantes tácticos garantizando `>= 4` coberturas reales.
+* **Protección de Entrada en `Game.transitionToRoom`:** En salas con plantilla (`hasAuthoredTemplate`), los enemigos cercanos a la puerta de entrada ya no se teletransportan al azar rompiendo la formación, sino que se desplazan suavemente hacia el interior manteniendo la figura y otorgan `0.42s` de `reactionDelay` inicial.
+
+### 19.2 Editor Visual de Salas (13x9) en Consola `[F2]` (`dev_console.js`)
+* Se añadió la pestaña **`🗺️ EDITOR DE SALAS (13x9)`** en la consola `[F2]`:
+  * Grilla interactiva de `13x9` celdas con soporte de clic y arrastrar, 14 pinceles coloreados, botones de **Simetría Horizontal (`Izq → Der`)**, **Simetría Vertical (`Arr → Abj`)** y **Capturar Sala Actual**.
+  * **`⚡ PROBAR EN LA SALA ACTUAL EN VIVO`:** Compila y aplica el diseño instantáneamente sobre la habitación donde está parado el jugador.
+  * **`💾 GUARDAR EN MI JUEGO + COPIAR JS`:** Persiste la plantilla en `localStorage` (`roguelike_custom_room_templates_v1`) para que salga en futuras partidas automáticamente y genera/copia el bloque de código JS listo para pegar en `level_templates.js`.
+
+---
+
+## 20. ARQUITECTURA MODULAR DE ARMAS "PLUG & PLAY" (`weapons.js` - v3.1)
+
+### 20.1 Desacoplamiento Total del Sistema de Armas
+* **Archivo Dedicado `weapons.js` (`window.WeaponSystem`, `ModularWeapon`, `WeaponHelper`):**
+  * Extrae toda la lógica de armas fuera de `script.js` e invierte las dependencias: `Player`, HUD (`UIManager`), `InputManager`, `CombatSystem`, `EvolutionManager`, `SynergyManager`/`SynergyEngine`, `boss_phases.js` y `mobile_controls.js` ahora consultan contratos genéricos (`weapon.symbol`, `weapon.getModeBadge()`, `weapon.getShortModeLabel()`, `WeaponSystem.weaponHasTag()`, `WeaponSystem.isWeaponParrying()`) sin depender nunca de nombres o clases fijas.
+  * **Para crear un arma nueva en el futuro**, solo se agrega un bloque `WeaponSystem.register({ id, name, symbol, starter, tags, modes, drawWeapon, evolutions })` en `weapons.js`:
+    * `tags`: `['PROJECTILE']`, `['BEAM']`, `['MELEE']`, `['PARRY']`. Activan automáticamente las 75 reliquias, sinergias (`ABSOLUTE_ZERO`, `VOLCANIC_SUPERNOVA`, `THUNDER_GOD_PARRY`) y evoluciones por etiqueta o evoluciones personalizadas propias.
+    * **Motores de Ataque Reutilizables (`WeaponHelper`):** `PROJECTILE_FAN` (ráfagas, abanicos, escopetas, rebotes, homing y anillos 360°), `MELEE_ARC` (arcos cuerpo a cuerpo integrados con `CombatSystem`, corte/parry opcional con `canParry: true` y ondas de choque por proyectil extra), `HITSCAN_BEAM` (con carga o pulso instantáneo) y `CUSTOM`.
+  * **Arsenal Dinámico:** `Player` usa `WeaponSystem.createPlayerArsenal(this)` (armas con `starter: true`) y `WeaponSystem.giveWeapon(player, id, selectImmediately)` permite otorgar armas extra en runtime; `InputManager` soporta dinámicamente `Digit1`–`Digit9`.
+  * **Catálogo Base + 2 Armas Demo Listas:** Incluye las 3 clásicas (`BALLS` `'Pelotas'`, `LASER` `'Rayo Láser'`, `SWORD` `'Espada Larga'`, con alias `ProjectileWeapon`, `ChargeLaserWeapon`, `LongSwordWeapon` retrocompatibles) más 2 armas listas para probar (`ABYSS_SHOTGUN` `'💥 Escopeta Abisal'` y `STAR_CHAKRAM` `'🌀 Chakram Estelar'`, en `starter: false`), equipables al instante desde la pestaña `🛠️ HERRAMIENTAS` de la Consola `[F2]`.
+* **Carga Sincronizada Desktop & Móvil:** Both `index.html` y `index_mobile.html` cargan `weapons.js` antes de `evolutions.js` / `synergies.js` / `script.js` (y también `level_templates.js` quedó incluido en `index_mobile.html`).
 
 ---

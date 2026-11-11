@@ -561,8 +561,10 @@
           const modeTag = document.getElementById('touch-weapon-mode-tag');
           if (modeTag && game.player.currentWeapon) {
             const w = game.player.currentWeapon;
-            const mode = w.currentMode || 'NORMAL';
-            modeTag.textContent = mode.toUpperCase();
+            const mode = typeof w.getShortModeLabel === 'function'
+              ? w.getShortModeLabel()
+              : (w.currentMode || 'NORMAL');
+            modeTag.textContent = String(mode).toUpperCase();
           }
         }
       }

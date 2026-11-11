@@ -176,7 +176,7 @@ var GAMEBREAKER_SYNERGIES = {
     desc: 'El Rayo Láser congela enemigos en seco (2.2s) y deja fisuras criogénicas que ralentizan proyectiles enemigos un 70%.',
     check(player) {
       const hasIce = Boolean(player && player.itemManager && (player.itemManager.hasRelic('FROZEN_HEART') || (player.elementalPool && (player.elementalPool.ICE || 0) > 0)));
-      const isLaser = Boolean(player && player.currentWeapon && (player.currentWeapon.name === 'Rayo Láser' || (typeof ChargeLaserWeapon !== 'undefined' && player.currentWeapon instanceof ChargeLaserWeapon)));
+      const isLaser = Boolean(player && player.currentWeapon && (typeof WeaponSystem !== 'undefined' ? WeaponSystem.weaponHasTag(player.currentWeapon, 'BEAM') : player.currentWeapon.name === 'Rayo Láser'));
       return hasIce && isLaser;
     }
   },
@@ -187,7 +187,7 @@ var GAMEBREAKER_SYNERGIES = {
     desc: 'Las pelotas de combate detonan al impacto liberando 6 meteoritos ardientes en anillo que dejan charcos de magma.',
     check(player) {
       const hasFire = Boolean(player && player.itemManager && (player.itemManager.hasRelic('UNSTABLE_POWDER') || player.itemManager.hasRelic('ASH_KING') || (player.elementalPool && (player.elementalPool.FIRE || 0) > 0)));
-      const isBall = Boolean(player && player.currentWeapon && (player.currentWeapon.name === 'Pelotas' || (typeof ProjectileWeapon !== 'undefined' && player.currentWeapon instanceof ProjectileWeapon)));
+      const isBall = Boolean(player && player.currentWeapon && (typeof WeaponSystem !== 'undefined' ? WeaponSystem.weaponHasTag(player.currentWeapon, 'PROJECTILE') : player.currentWeapon.name === 'Pelotas'));
       return hasFire && isBall;
     }
   },
@@ -198,7 +198,7 @@ var GAMEBREAKER_SYNERGIES = {
     desc: 'Desviar un proyectil con la Espada convoca un relámpago divino sobre TODOS los enemigos de la sala y resetea el Dash.',
     check(player) {
       const hasLight = Boolean(player && player.itemManager && (player.itemManager.hasRelic('VOLTAIC_ARC') || player.itemManager.hasRelic('DIVINE_REVENGE') || (player.elementalPool && (player.elementalPool.LIGHTNING || 0) > 0)));
-      const isSword = Boolean(player && player.currentWeapon && (player.currentWeapon.name === 'Espada Larga' || (typeof LongSwordWeapon !== 'undefined' && player.currentWeapon instanceof LongSwordWeapon)));
+      const isSword = Boolean(player && player.currentWeapon && (typeof WeaponSystem !== 'undefined' ? (WeaponSystem.weaponHasTag(player.currentWeapon, 'MELEE') || WeaponSystem.weaponHasTag(player.currentWeapon, 'PARRY')) : player.currentWeapon.name === 'Espada Larga'));
       return hasLight && isSword;
     }
   },
@@ -316,7 +316,7 @@ var SynergyEngine = class SynergyEngine {
       const suctionForce = 130;
       if (room.enemies) {
         for (const e of room.enemies) {
-          if (e.markedForDeletion || e.isBurrowed) continue;
+          if (e.markedForDeletion || e.isBurrowed || e.isBoss) continue;
           const d = Math.hypot(proj.x - e.x, proj.y - e.y);
           if (d > 0 && d <= suctionRadius) {
             const pull = MathUtils.normalize(proj.x - e.x, proj.y - e.y);
@@ -371,10 +371,13 @@ var SynergyEngine = class SynergyEngine {
           }
         }
       }
-      // Resetear cooldown de Dash inmediatamente
+      // Resetear cooldown y cargas de Dash inmediatamente
+      player.dodgeCharges = player.maxDodgeCharges || 2;
+      player.dodgeCooldownTimer = 0;
       if (player.combatSystem) {
         player.combatSystem.dashCooldownTimer = 0;
       }
+      if (player.ui) player.ui.updateStats(player);
       // Sacudida de pantalla triunfal
       if (window.CombatSystem) {
         window.CombatSystem.triggerScreenShake(14, 0.4);

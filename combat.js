@@ -1,24 +1,30 @@
 /**
  * ============================================================================
- * SISTEMA MODULAR DE COMBATE, MOVILIDAD VISCERAL Y GAME JUICE (`combat.js` - v2.2)
+ * SISTEMA MODULAR DE COMBATE, MOVILIDAD VISCERAL Y GAME JUICE (`combat.js` - v2.9)
  * ============================================================================
  * Diseñado con arquitectura desacoplada para facilitar la futura transición
  * 1:1 a un motor gráfico profesional (Godot Engine / Unity C#).
  *
  * Módulos contenidos:
  *  1. COMBAT_CONFIG: Parámetros numéricos y físicas de combate 100% configurables.
- *  2. CombatSystem: Controlador de animación, I-Frames, corte de proyectiles,
- *     parry reflectivo, hit-stop reactivo y screen-shake direccional.
+ *  2. CombatSystem: Controlador de animación, I-Frames, Perfect Dodge, corte de
+ *     proyectiles, parry reflectivo, hit-stop reactivo y screen-shake direccional.
  * ============================================================================
  */
 
 const COMBAT_CONFIG = {
-  // --- Cancelación de Animaciones y Dash (Hades Style) ---
-  DASH_DURATION: 0.18,              // Duración activa del dash en segundos
-  DASH_I_FRAMES: 0.28,              // Tiempo total de invulnerabilidad (i-frames)
-  DASH_SPEED_MULT: 2.45,            // Multiplicador de velocidad de traslación
+  // --- Cancelación de Animaciones, Dash y Evasión Perfecta (Hades Style v2.9) ---
+  DASH_DURATION: 0.20,              // Duración activa del dash en segundos
+  DASH_GLIDE_DURATION: 0.12,        // Deslizamiento fluido de salida tras el dash
+  DASH_I_FRAMES: 0.30,              // Tiempo total de invulnerabilidad (i-frames)
+  DASH_SPEED_MULT: 2.50,            // Multiplicador de velocidad de traslación
   DASH_KNOCKBACK_FORCE: 340,        // Empuje físico a enemigos al atravesarlos
   DASH_CANCEL_ATTACK: true,         // Cancela instantáneamente swings de espada y carga láser
+  PERFECT_DODGE_CD_REFUND: 0.95,    // Reembolso de cooldown del Dash al esquivar en I-Frames
+  PERFECT_DODGE_SPEED_BONUS: 0.25,  // +25% velocidad de movimiento temporal tras Evasión Perfecta
+  PERFECT_DODGE_ASPD_BONUS: 0.20,   // +20% velocidad de ataque temporal tras Evasión Perfecta
+  PERFECT_DODGE_BUFF_DURATION: 1.6, // Duración del impulso de Adrenalina
+  PERFECT_DODGE_INTERNAL_CD: 0.85,  // Enfriamiento interno anti-spam de Evasión Perfecta
 
   // --- Corte y Desvío de Balas Melee ---
   SWORD_CAN_SLICE_BULLETS: true,    // En cualquier tajo corta/destruye proyectiles comunes
@@ -41,6 +47,78 @@ const COMBAT_CONFIG = {
 };
 
 class CombatSystem {
+  /**
+   * Indica si el jugador se encuentra activamente dentro de la ventana de Dash/I-Frames.
+   * @param {Player} player
+   * @returns {boolean}
+   */
+  static isPlayerDashing(player) {
+    return Boolean(player && (player.dodgeActiveTimer > 0 || player.dashIFrameTimer > 0));
+  }
+
+  /**
+   * Dispara la recompensa de "Evasión Perfecta" (estilo Hades/Bayonetta) cuando
+   * el jugador atraviesa balas, anillos o ataques durante sus I-Frames de Dash.
+   * Reembolsa enfriamiento del Dash y activa un impulso de Adrenalina.
+   */
+  static triggerPerfectDodge(player, room, hitX = null, hitY = null, label = '⚡ EVASIÓN PERFECTA') {
+    if (!player || player.markedForDeletion) return false;
+    if (!CombatSystem.isPlayerDashing(player)) return false;
+    if ((player.perfectDodgeInternalCd || 0) > 0) return false;
+
+    player.perfectDodgeInternalCd = COMBAT_CONFIG.PERFECT_DODGE_INTERNAL_CD;
+
+    // 1. Reembolso de enfriamiento de Dash (puede restaurar una carga de inmediato)
+    if (player.dodgeCharges < player.maxDodgeCharges) {
+      const currentCd = player.dodgeCooldownTimer > 0
+        ? player.dodgeCooldownTimer
+        : (player.dodgeCharges === 0 ? (player.dodgeCooldownEmpty || 1.95) : (player.dodgeCooldownSingle || 1.45));
+      player.dodgeCooldownTimer = currentCd - COMBAT_CONFIG.PERFECT_DODGE_CD_REFUND;
+      if (player.dodgeCooldownTimer <= 0) {
+        player.dodgeCharges = Math.min(player.maxDodgeCharges, player.dodgeCharges + 1);
+        player.dodgeCooldownTimer = player.dodgeCharges < player.maxDodgeCharges
+          ? (player.dodgeCooldownSingle || 1.45)
+          : 0;
+      }
+    }
+
+    // 2. Impulso de Adrenalina temporal (+25% Velocidad, +20% Cadencia)
+    player.adrenalineTimer = COMBAT_CONFIG.PERFECT_DODGE_BUFF_DURATION;
+    if (player.itemManager && typeof player.itemManager.applyPassiveStats === 'function') {
+      player.itemManager.applyPassiveStats();
+    }
+
+    // 3. Game Juice audiovisual
+    const fxX = hitX !== null ? hitX : player.x;
+    const fxY = hitY !== null ? hitY : player.y;
+    if (room && typeof room.spawnParticle === 'function') {
+      for (let i = 0; i < 10; i++) {
+        const ang = (i * Math.PI * 2) / 10;
+        const spd = 110 + Math.random() * 80;
+        room.spawnParticle(
+          fxX,
+          fxY,
+          Math.cos(ang) * spd,
+          Math.sin(ang) * spd,
+          4.2,
+          i % 2 === 0 ? '#38bdf8' : '#fde047',
+          0.35
+        );
+      }
+    }
+
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('perfect_dodge', { volume: 0.72 });
+    }
+    if (player.ui && typeof player.ui.spawnFloatingText === 'function') {
+      player.ui.spawnFloatingText(label, '#38bdf8', player.x, player.y - 24);
+    }
+    if (player.ui) {
+      player.ui.updateStats(player);
+    }
+    return true;
+  }
+
   /**
    * Intenta ejecutar un impulso evasivo (Dash) con cancelación instantánea de animación.
    * @param {Player} player
@@ -69,8 +147,10 @@ class CombatSystem {
       }
     }
 
-    // 3. Activar I-Frames y estado evasivo
+    // 3. Activar I-Frames y estado evasivo con inercia de salida
     player.dodgeActiveTimer = COMBAT_CONFIG.DASH_DURATION;
+    player.dashIFrameTimer = COMBAT_CONFIG.DASH_I_FRAMES;
+    player.dashGlideTimer = 0;
     player.invulnerableTimer = Math.max(player.invulnerableTimer, COMBAT_CONFIG.DASH_I_FRAMES);
 
     // Dirección del dash: prioriza la dirección del movimiento (WASD); si está quieto, hacia el cursor
@@ -134,7 +214,9 @@ class CombatSystem {
    */
   static processSwordProjectileInteractions(sword, player, room, aimState) {
     if (!room.enemyProjectiles || room.enemyProjectiles.length === 0) return;
-    const isParryMode = sword.mode === 0;
+    const isParryMode = typeof sword.isModeParry === 'function'
+      ? sword.isModeParry()
+      : (sword.mode === 0);
 
     for (const ep of room.enemyProjectiles) {
       if (ep.markedForDeletion || sword.parriedProjectiles.has(ep)) continue;
@@ -173,6 +255,10 @@ class CombatSystem {
             reflectedProj.borderColor = '#ffffff';
             room.projectiles.push(reflectedProj);
             player.itemManager.onShoot(reflectedProj, room);
+
+            if (window.synergyEngine && typeof window.synergyEngine.onParrySuccess === 'function') {
+              window.synergyEngine.onParrySuccess(player, room);
+            }
 
             // Sinergia Parry del Dios del Trueno
             if ((player.synergyManager && player.synergyManager.has('THUNDER_GOD_PARRY')) || (window.synergyEngine && window.synergyEngine.has('THUNDER_GOD_PARRY'))) {
@@ -229,7 +315,9 @@ class CombatSystem {
    * @param {object} aimState
    */
   static processSwordEnemyImpact(sword, player, room, enemy, aimState) {
-    const isParryMode = sword.mode === 0;
+    const isParryMode = typeof sword.isModeParry === 'function'
+      ? sword.isModeParry()
+      : (sword.mode === 0);
     const isCrit = player.critChance > 0 && Math.random() < player.critChance;
 
     if (enemy.isGuarding && typeof enemy.onGuardedHit === 'function') {
@@ -241,14 +329,18 @@ class CombatSystem {
     const dy = enemy.y - player.y;
     const norm = MathUtils.normalize(dx, dy);
 
-    const baseDmg = isParryMode ? 30 : 95;
+    const baseDmg = typeof sword.getActiveMeleeDamage === 'function'
+      ? sword.getActiveMeleeDamage()
+      : (isParryMode ? 30 : 95);
     let finalDmg = Math.round(baseDmg * player.damageMultiplier);
     if (isCrit) {
       finalDmg *= 2.0;
       room.spawnParticle(enemy.x, enemy.y, '#fef08a', 8);
     }
 
-    const pushForce = isParryMode ? 240 : 480;
+    const pushForce = typeof sword.getActiveMeleeKnockback === 'function'
+      ? sword.getActiveMeleeKnockback()
+      : (isParryMode ? 240 : 480);
     const dealt = enemy.takeDamage(
       finalDmg,
       norm.x * pushForce,

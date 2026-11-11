@@ -447,7 +447,12 @@
       }
     }
 
-    // B. Ajustar DAÑO y VELOCIDAD de todos los enemigos de la sala
+    // B. En Salas de Jefe, escalar orgánicamente al Jefe según la potencia real de la build
+    if (isBossRoom && player) {
+      this.tuneBossForPlayerBuild(room, player);
+    }
+
+    // C. Ajustar DAÑO y VELOCIDAD de todos los enemigos de la sala
     for (var j = 0; j < room.enemies.length; j++) {
       this.tuneSpawnedEnemy(room.enemies[j]);
     }
@@ -479,8 +484,47 @@
   };
 
   /**
+   * Calibra la vitalidad de un Jefe según el poder ofensivo acumulado del jugador
+   * y el régimen adaptativo actual, evitando que builds rotas evaporen Jefes en 2s.
+   * En régimen ALIVIO mantiene el 100% base para no castigar al jugador exigido.
+   */
+  BrotherEyeEngine.prototype.tuneBossForPlayerBuild = function (room, player) {
+    if (!this.enabled || !room || !room.enemies || !player) return;
+
+    var regime = this.state4_adaptive.regime;
+    var dmgMult = player.damageMultiplier || 1.0;
+    var aspdMult = player.attackSpeedMultiplier || 1.0;
+    var extraProj = Math.min(4, player.extraProjectiles || 0);
+    var dpsPowerIndex = dmgMult * aspdMult * (1.0 + extraProj * 0.42);
+    var bossHpMult = 1.0;
+
+    if (regime === 'PIES_EN_LA_TIERRA') {
+      bossHpMult = clamp(1.30 + Math.max(0, dpsPowerIndex - 1.5) * 0.14, 1.30, 1.65);
+    } else if (regime === 'ACOMPAÑAR_BUILD') {
+      bossHpMult = clamp(1.15 + Math.max(0, dpsPowerIndex - 1.4) * 0.12, 1.15, 1.50);
+    } else if (regime !== 'ALIVIO' && dpsPowerIndex >= 1.85) {
+      bossHpMult = clamp(1.0 + (dpsPowerIndex - 1.85) * 0.18, 1.05, 1.40);
+    }
+
+    if (bossHpMult <= 1.01) return;
+
+    for (var i = 0; i < room.enemies.length; i++) {
+      var boss = room.enemies[i];
+      if (!boss || !boss.isBoss || boss.markedForDeletion) continue;
+      if (typeof boss._baseBossMaxHp !== 'number') {
+        boss._baseBossMaxHp = boss.maxHp;
+      }
+      var prevMax = boss.maxHp || boss._baseBossMaxHp;
+      var hpRatio = prevMax > 0 ? clamp(boss.hp / prevMax, 0, 1) : 1;
+      boss.maxHp = Math.round(boss._baseBossMaxHp * bossHpMult);
+      boss.hp = Math.max(1, Math.round(boss.maxHp * hpRatio));
+      boss.eyeBossPowerMult = bossHpMult;
+    }
+  };
+
+  /**
    * Ajusta el daño y la velocidad de un enemigo individual según el Estado 4 actual.
-   * Nota: NO infla la vida de forma artificial para no arruinar las builds rotas.
+   * Nota: Los Jefes usan `tuneBossForPlayerBuild` al entrar a su sala real y topes justos de daño.
    */
   BrotherEyeEngine.prototype.tuneSpawnedEnemy = function (enemy) {
     if (!this.enabled || !enemy) return;
@@ -495,15 +539,17 @@
       enemy._baseSpeed = enemy.speed;
     }
 
+    var effectiveDmgMult = enemy.isBoss ? Math.min(1.25, mod.enemyDamageMultiplier) : mod.enemyDamageMultiplier;
+
     // 1. Escalar Daño de Contacto y guardar multiplicador para sus proyectiles
     if (typeof enemy._baseContactDamage === 'number') {
-      enemy.contactDamage = Math.max(1, Math.round(enemy._baseContactDamage * mod.enemyDamageMultiplier));
+      enemy.contactDamage = Math.max(1, Math.round(enemy._baseContactDamage * effectiveDmgMult));
     }
-    enemy.eyeDamageMultiplier = mod.enemyDamageMultiplier;
+    enemy.eyeDamageMultiplier = effectiveDmgMult;
 
     // 2. Escalar un poco su Velocidad (respetando topes de maniobrabilidad)
     if (typeof enemy._baseSpeed === 'number') {
-      var maxAllowedSpeed = enemy.isBoss ? 300 : 320;
+      var maxAllowedSpeed = enemy.isBoss ? 290 : 320;
       enemy.speed = clamp(Math.round(enemy._baseSpeed * mod.enemySpeedMultiplier), 45, maxAllowedSpeed);
     }
   };

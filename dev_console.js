@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * DEV_CONSOLE.JS - CONSOLA DE DIAGNÓSTICO, TELEMETRÍA Y BROTHER EYE EN VIVO
+ * DEV_CONSOLE.JS - CONSOLA DE DIAGNÓSTICO, BROTHER EYE Y EDITOR DE SALAS [F2]
  * ============================================================================
  * Proporciona una consola dentro del juego accesible mediante un botón en el HUD
  * o con la tecla [F2] / [º] / [~].
@@ -12,6 +12,10 @@
  *     de Ruido, racha de Dios y modificadores aplicados sala por sala).
  *  3. Herramientas de rescate instantáneo (Rescatar jugador fuera del mapa,
  *     limpiar proyectiles, forzar subidón "Pies en la Tierra", ejecutar JS).
+ *  4. Editor Visual de Salas (13x9) y Secciones de Autor (v3.0): permite dibujar
+ *     salas con rocas, fosos, trampas y enemigos, probarlas en vivo en la
+ *     habitación actual, guardarlas en el catálogo local y exportar el código JS
+ *     para `level_templates.js`.
  *
  * REGLA INVIOLABLE: 100% DOM HTML/CSS. Cero llamadas de texto en Canvas.
  * ============================================================================
@@ -20,25 +24,69 @@
 (function (root) {
   var MAX_LOGS = 120;
 
+  var EDITOR_BRUSHES = [
+    { symbol: '.', label: '. Piso', desc: 'Piso libre', color: '#1e293b', text: '#94a3b8' },
+    { symbol: '#', label: '# Roca', desc: 'Muro / Roca destructible', color: '#475569', text: '#f8fafc' },
+    { symbol: 'O', label: 'O Vasija', desc: 'Vasija con botín', color: '#b45309', text: '#fef3c7' },
+    { symbol: '~', label: '~ Foso', desc: 'Abismo intransitable (Saltable con Dash)', color: '#020617', text: '#38bdf8' },
+    { symbol: '^', label: '^ Pinchos', desc: 'Trampa de Pinchos rítmica', color: '#7f1d1d', text: '#fca5a5' },
+    { symbol: '*', label: '* Fuego', desc: 'Zona de Fuego continuo', color: '#9a3412', text: '#fdba74' },
+    { symbol: '%', label: '% Veneno', desc: 'Charco Venenoso (Slow 50%)', color: '#14532d', text: '#86efac' },
+    { symbol: 'S', label: 'S Francot.', desc: 'ShooterEnemy (Distancia)', color: '#581c87', text: '#e9d5ff' },
+    { symbol: 'C', label: 'C Charger', desc: 'ChargerEnemy (Embestida)', color: '#991b1b', text: '#fecaca' },
+    { symbol: 'F', label: 'F Volador', desc: 'FlyerEnemy (Vuela sobre fosos)', color: '#0c4a6e', text: '#bae6fd' },
+    { symbol: 'P', label: 'P Splitter', desc: 'SplitterEnemy (Se divide)', color: '#134e4a', text: '#99f6e4' },
+    { symbol: 'E', label: 'E Básico', desc: 'Enemigo cuerpo a cuerpo', color: '#831843', text: '#fbcfe8' },
+    { symbol: 'X', label: 'X Élite', desc: 'Minijefe EliteEnemy', color: '#713f12', text: '#fde047' },
+    { symbol: '?', label: '? Random', desc: 'Enemigo aleatorio en este punto', color: '#312e81', text: '#c7d2fe' }
+  ];
+
+  function getBrushMeta(symbol) {
+    for (var i = 0; i < EDITOR_BRUSHES.length; i++) {
+      if (EDITOR_BRUSHES[i].symbol === symbol) return EDITOR_BRUSHES[i];
+    }
+    return EDITOR_BRUSHES[0];
+  }
+
   function InGameDevConsole() {
     this.isOpen = false;
-    this.activeTab = 'BROTHER_EYE'; // 'BROTHER_EYE' | 'LOGS' | 'TOOLS'
+    this.activeTab = 'BROTHER_EYE'; // 'BROTHER_EYE' | 'LEVEL_EDITOR' | 'LOGS' | 'TOOLS'
     this.logs = [];
     this.errorCount = 0;
     this.warnCount = 0;
     this.refreshTimer = null;
 
+    // Estado del Editor de Salas 13x9
+    this.editorState = {
+      id: 'MI_SALA_AUTOR',
+      name: 'Sala Personalizada',
+      sectionTag: 'AUTOR',
+      selectedBrush: '#',
+      isMouseDown: false,
+      grid: [
+        '.............',
+        '.S..#...#..S.',
+        '....O...O....',
+        '.............',
+        '...##...##...',
+        '.............',
+        '....O...O....',
+        '.C..#...#..C.',
+        '.............'
+      ]
+    };
+
     this.initDOM();
     this.hookGlobalErrors();
     this.hookBrotherEye();
 
-    this.log('INFO', 'Consola de Diagnóstico v2.5 inicializada. Presiona [F2] o usa el botón superior para abrir/cerrar.');
+    this.log('INFO', 'Consola v3.0 inicializada. Presiona [F2] para abrir BrotherEye o el Editor de Salas (13x9).');
   }
 
   InGameDevConsole.prototype.initDOM = function () {
     var self = this;
 
-    // 1. Inyectar estilos CSS de la consola
+    // 1. Inyectar estilos CSS de la consola y del Editor 13x9
     var style = document.createElement('style');
     style.id = 'dev-console-styles';
     style.textContent = [
@@ -96,12 +144,12 @@
       '}',
       '.dev-console-modal {',
       '  position: fixed;',
-      '  top: 46px;',
+      '  top: 44px;',
       '  left: 50%;',
       '  transform: translateX(-50%);',
-      '  width: 880px;',
+      '  width: 920px;',
       '  max-width: 96vw;',
-      '  max-height: 82vh;',
+      '  max-height: 86vh;',
       '  background: rgba(6, 10, 20, 0.96);',
       '  border: 1.5px solid rgba(56, 189, 248, 0.55);',
       '  border-radius: 12px;',
@@ -124,19 +172,22 @@
       '  padding: 10px 16px;',
       '  background: linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(12, 19, 34, 0.95));',
       '  border-bottom: 1px solid #1e293b;',
+      '  flex-wrap: wrap;',
+      '  gap: 8px;',
       '}',
       '.dev-console-tabs {',
       '  display: flex;',
-      '  gap: 8px;',
+      '  gap: 6px;',
+      '  flex-wrap: wrap;',
       '}',
       '.dev-tab-btn {',
       '  background: rgba(15, 23, 42, 0.8);',
       '  border: 1px solid #334155;',
       '  color: #94a3b8;',
-      '  padding: 5px 12px;',
+      '  padding: 5px 11px;',
       '  border-radius: 6px;',
       '  font-family: inherit;',
-      '  font-size: 0.73rem;',
+      '  font-size: 0.72rem;',
       '  font-weight: 800;',
       '  cursor: pointer;',
       '  transition: all 0.15s ease;',
@@ -148,13 +199,13 @@
       '  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);',
       '}',
       '.dev-console-body {',
-      '  padding: 14px 16px;',
+      '  padding: 12px 16px;',
       '  overflow-y: auto;',
       '  flex: 1;',
       '  display: flex;',
       '  flex-direction: column;',
-      '  gap: 12px;',
-      '  max-height: 64vh;',
+      '  gap: 10px;',
+      '  max-height: 68vh;',
       '}',
       '.eye-grid {',
       '  display: grid;',
@@ -271,7 +322,80 @@
       '  font-size: 0.74rem;',
       '  outline: none;',
       '}',
-      '.dev-cmd-input:focus { border-color: #38bdf8; }'
+      '.dev-cmd-input:focus { border-color: #38bdf8; }',
+      /* Estilos del Editor de Salas 13x9 */
+      '.lvl-editor-layout {',
+      '  display: grid;',
+      '  grid-template-columns: 1fr 290px;',
+      '  gap: 12px;',
+      '  align-items: start;',
+      '}',
+      '@media (max-width: 780px) {',
+      '  .lvl-editor-layout { grid-template-columns: 1fr; }',
+      '}',
+      '.lvl-brush-bar {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 5px;',
+      '  margin-bottom: 8px;',
+      '}',
+      '.lvl-brush-btn {',
+      '  border: 1px solid #334155;',
+      '  border-radius: 5px;',
+      '  padding: 4px 8px;',
+      '  font-family: inherit;',
+      '  font-size: 0.68rem;',
+      '  font-weight: 800;',
+      '  cursor: pointer;',
+      '  transition: transform 0.1s ease, box-shadow 0.1s ease;',
+      '}',
+      '.lvl-brush-btn.selected {',
+      '  outline: 2px solid #38bdf8;',
+      '  box-shadow: 0 0 12px rgba(56, 189, 248, 0.65);',
+      '  transform: translateY(-1px);',
+      '}',
+      '.lvl-grid-board {',
+      '  display: grid;',
+      '  grid-template-columns: repeat(13, 1fr);',
+      '  gap: 3px;',
+      '  background: #050811;',
+      '  padding: 8px;',
+      '  border: 2px solid #334155;',
+      '  border-radius: 8px;',
+      '  user-select: none;',
+      '}',
+      '.lvl-grid-cell {',
+      '  aspect-ratio: 1.25 / 1;',
+      '  min-height: 26px;',
+      '  border: 1px solid rgba(148, 163, 184, 0.18);',
+      '  border-radius: 4px;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  font-size: 0.78rem;',
+      '  font-weight: 900;',
+      '  cursor: pointer;',
+      '  position: relative;',
+      '}',
+      '.lvl-grid-cell:hover {',
+      '  border-color: #38bdf8;',
+      '  filter: brightness(1.2);',
+      '}',
+      '.lvl-grid-cell.door-cell {',
+      '  box-shadow: inset 0 0 0 1.5px rgba(56, 189, 248, 0.65);',
+      '}',
+      '.lvl-code-box {',
+      '  width: 100%;',
+      '  height: 135px;',
+      '  background: #030712;',
+      '  border: 1px solid #334155;',
+      '  border-radius: 6px;',
+      '  color: #a7f3d0;',
+      '  font-family: inherit;',
+      '  font-size: 0.66rem;',
+      '  padding: 6px 8px;',
+      '  resize: vertical;',
+      '}'
     ].join('\n');
     document.head.appendChild(style);
 
@@ -280,7 +404,7 @@
     this.toggleBtn.id = 'dev-console-toggle-btn';
     this.toggleBtn.className = 'dev-console-toggle-btn';
     this.toggleBtn.type = 'button';
-    this.toggleBtn.title = 'Abrir/Cerrar Consola de Diagnóstico y BrotherEye (Tecla F2)';
+    this.toggleBtn.title = 'Abrir/Cerrar Consola de Diagnóstico, BrotherEye y Editor de Salas (Tecla F2)';
     this.toggleBtn.innerHTML = '<span>💻 CONSOLA [F2]</span><span id="dev-console-badge" class="dev-console-badge">EYE: R=65</span>';
     this.toggleBtn.addEventListener('click', function () {
       self.toggle();
@@ -294,9 +418,10 @@
     this.modal.innerHTML = [
       '<div class="dev-console-header">',
       '  <div class="dev-console-tabs">',
-      '    <button type="button" class="dev-tab-btn active" data-tab="BROTHER_EYE">👁️ BROTHER EYE (ESTADOS -1 A 4)</button>',
-      '    <button type="button" class="dev-tab-btn" data-tab="LOGS">📜 LOGS Y ERRORES (<span id="dev-tab-err-count">0</span>)</button>',
-      '    <button type="button" class="dev-tab-btn" data-tab="TOOLS">🛠️ RESCATE Y TESTEO RÁPIDO</button>',
+      '    <button type="button" class="dev-tab-btn active" data-tab="BROTHER_EYE">👁️ BROTHER EYE</button>',
+      '    <button type="button" class="dev-tab-btn" data-tab="LEVEL_EDITOR">🗺️ EDITOR DE SALAS (13x9)</button>',
+      '    <button type="button" class="dev-tab-btn" data-tab="LOGS">📜 LOGS (<span id="dev-tab-err-count">0</span>)</button>',
+      '    <button type="button" class="dev-tab-btn" data-tab="TOOLS">🛠️ HERRAMIENTAS</button>',
       '  </div>',
       '  <button type="button" id="dev-console-close" class="dev-tab-btn" style="border-color:#ef4444;color:#fca5a5;">CERRAR [F2]</button>',
       '</div>',
@@ -307,6 +432,10 @@
       '</form>'
     ].join('\n');
     document.body.appendChild(this.modal);
+
+    window.addEventListener('mouseup', function () {
+      self.editorState.isMouseDown = false;
+    });
 
     // Eventos de pestañas
     var tabBtns = this.modal.querySelectorAll('[data-tab]');
@@ -452,10 +581,288 @@
     if (!this.isOpen) return;
     if (this.activeTab === 'BROTHER_EYE') {
       this.renderBrotherEyeTab();
+    } else if (this.activeTab === 'LEVEL_EDITOR') {
+      this.renderLevelEditorTab();
     } else if (this.activeTab === 'LOGS') {
       this.renderLogsTab();
     } else if (this.activeTab === 'TOOLS') {
       this.renderToolsTab();
+    }
+  };
+
+  InGameDevConsole.prototype.renderLevelEditorTab = function () {
+    var self = this;
+    var body = document.getElementById('dev-console-body');
+    if (!body) return;
+
+    var allTemplates = (typeof LevelTemplateSystem !== 'undefined')
+      ? LevelTemplateSystem.getAllRoomTemplates()
+      : [];
+
+    var optionsHtml = allTemplates.map(function (t) {
+      var sel = (t.id === self.editorState.id) ? ' selected' : '';
+      var tag = t.isCustom ? '★ PERSONALIZADA' : (t.sectionTag || 'AUTOR');
+      return '<option value="' + t.id + '"' + sel + '>[' + tag + '] ' + t.name + ' (' + t.id + ')</option>';
+    }).join('');
+
+    var brushesHtml = EDITOR_BRUSHES.map(function (b) {
+      var isSel = self.editorState.selectedBrush === b.symbol;
+      return '<button type="button" class="lvl-brush-btn' + (isSel ? ' selected' : '') + '" ' +
+        'data-brush="' + b.symbol + '" title="' + b.desc + '" ' +
+        'style="background:' + b.color + ';color:' + b.text + ';">' + b.label + '</button>';
+    }).join('');
+
+    var rows = (typeof LevelTemplateSystem !== 'undefined')
+      ? LevelTemplateSystem.normalizeGrid(this.editorState.grid)
+      : this.editorState.grid;
+    this.editorState.grid = rows;
+
+    var cellsHtml = '';
+    for (var r = 0; r < 9; r++) {
+      for (var c = 0; c < 13; c++) {
+        var ch = rows[r].charAt(c) || '.';
+        var bMeta = getBrushMeta(ch);
+        var isDoor = (r === 0 && c === 6) || (r === 8 && c === 6) || (r === 4 && c === 0) || (r === 4 && c === 12);
+        var doorTitle = isDoor ? ' (Umbral de Puerta)' : '';
+        cellsHtml += '<div class="lvl-grid-cell' + (isDoor ? ' door-cell' : '') + '" ' +
+          'data-row="' + r + '" data-col="' + c + '" ' +
+          'title="Celda (' + c + ', ' + r + '): ' + bMeta.desc + doorTitle + '" ' +
+          'style="background:' + bMeta.color + ';color:' + bMeta.text + ';">' +
+          (ch === '.' ? (isDoor ? '🚪' : '·') : ch) +
+          '</div>';
+      }
+    }
+
+    var exportedCode = (typeof LevelTemplateSystem !== 'undefined')
+      ? LevelTemplateSystem.formatTemplateAsCode(this.editorState)
+      : '';
+
+    var floorInfo = '';
+    var game = window.activeGameInstance;
+    if (game && game.currentRoom) {
+      var cr = game.currentRoom;
+      var secLabel = (game.currentFloor && game.currentFloor.activeSectionName)
+        ? ' | Sección Piso: ' + game.currentFloor.activeSectionName
+        : '';
+      floorInfo = 'Sala Actual: <strong>' + (cr.templateName || cr.layoutType) + '</strong> (' + cr.type + ')' + secLabel;
+    }
+
+    body.innerHTML = [
+      '<div class="lvl-editor-layout">',
+      '  <div>',
+      '    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap;">',
+      '      <span style="font-size:0.72rem;color:#38bdf8;font-weight:800;">🎨 PINCELES (CLIC O ARRASTRAR EN LA GRILLA 13x9):</span>',
+      '      <span style="font-size:0.68rem;color:#94a3b8;">' + floorInfo + '</span>',
+      '    </div>',
+      '    <div class="lvl-brush-bar">' + brushesHtml + '</div>',
+      '    <div id="lvl-grid-board" class="lvl-grid-board">' + cellsHtml + '</div>',
+      '    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">',
+      '      <button type="button" class="dev-tab-btn" id="lvl-btn-mirror-x">↔️ Simetría Izq → Der</button>',
+      '      <button type="button" class="dev-tab-btn" id="lvl-btn-mirror-y">↕️ Simetría Arr → Abj</button>',
+      '      <button type="button" class="dev-tab-btn" id="lvl-btn-capture">📸 Capturar Sala Actual</button>',
+      '      <button type="button" class="dev-tab-btn" id="lvl-btn-clear" style="border-color:#ef4444;color:#fca5a5;">🧹 Limpiar Todo</button>',
+      '    </div>',
+      '  </div>',
+      '  <div class="eye-card" style="gap:8px;">',
+      '    <div class="eye-card-title">📂 CATÁLOGO Y EXPORTACIÓN</div>',
+      '    <label style="font-size:0.68rem;color:#94a3b8;">Cargar plantilla existente:</label>',
+      '    <select id="lvl-template-select" class="dev-cmd-input" style="width:100%;">',
+      '      <option value="">-- Elegir Plantilla --</option>',
+      optionsHtml,
+      '    </select>',
+      '    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">',
+      '      <div>',
+      '        <label style="font-size:0.65rem;color:#94a3b8;">ID (Código):</label>',
+      '        <input id="lvl-input-id" class="dev-cmd-input" style="width:100%;" value="' + this.editorState.id + '" />',
+      '      </div>',
+      '      <div>',
+      '        <label style="font-size:0.65rem;color:#94a3b8;">Nombre en HUD:</label>',
+      '        <input id="lvl-input-name" class="dev-cmd-input" style="width:100%;" value="' + this.editorState.name + '" />',
+      '      </div>',
+      '    </div>',
+      '    <button type="button" id="lvl-btn-apply-live" class="dev-tab-btn active" style="width:100%;padding:8px;background:rgba(56,189,248,0.25);border-color:#38bdf8;color:#fff;">',
+      '      ⚡ PROBAR EN LA SALA ACTUAL EN VIVO',
+      '    </button>',
+      '    <button type="button" id="lvl-btn-save-custom" class="dev-tab-btn" style="width:100%;padding:8px;border-color:#4ade80;color:#4ade80;">',
+      '      💾 GUARDAR EN MI JUEGO + COPIAR JS',
+      '    </button>',
+      '    <label style="font-size:0.65rem;color:#94a3b8;">Código listo para pegar en <code>level_templates.js</code>:</label>',
+      '    <textarea id="lvl-code-output" class="lvl-code-box" readonly>' + exportedCode + '</textarea>',
+      '  </div>',
+      '</div>'
+    ].join('\n');
+
+    // Eventos de pinceles
+    var brushBtns = body.querySelectorAll('[data-brush]');
+    for (var i = 0; i < brushBtns.length; i++) {
+      brushBtns[i].addEventListener('click', function (e) {
+        self.editorState.selectedBrush = e.currentTarget.getAttribute('data-brush');
+        self.renderLevelEditorTab();
+      });
+    }
+
+    // Función para pintar una celda sin re-renderizar todo el DOM de golpe
+    var paintCell = function (cellEl) {
+      var r = parseInt(cellEl.getAttribute('data-row'), 10);
+      var c = parseInt(cellEl.getAttribute('data-col'), 10);
+      var sym = self.editorState.selectedBrush;
+      var line = self.editorState.grid[r];
+      self.editorState.grid[r] = line.substring(0, c) + sym + line.substring(c + 1);
+
+      var bMeta = getBrushMeta(sym);
+      var isDoor = (r === 0 && c === 6) || (r === 8 && c === 6) || (r === 4 && c === 0) || (r === 4 && c === 12);
+      cellEl.style.background = bMeta.color;
+      cellEl.style.color = bMeta.text;
+      cellEl.textContent = sym === '.' ? (isDoor ? '🚪' : '·') : sym;
+
+      var codeOut = document.getElementById('lvl-code-output');
+      if (codeOut && typeof LevelTemplateSystem !== 'undefined') {
+        codeOut.value = LevelTemplateSystem.formatTemplateAsCode(self.editorState);
+      }
+    };
+
+    var cells = body.querySelectorAll('.lvl-grid-cell');
+    for (var j = 0; j < cells.length; j++) {
+      cells[j].addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        self.editorState.isMouseDown = true;
+        paintCell(e.currentTarget);
+      });
+      cells[j].addEventListener('mouseenter', function (e) {
+        if (self.editorState.isMouseDown) {
+          paintCell(e.currentTarget);
+        }
+      });
+    }
+
+    // Inputs de ID y Nombre
+    var idInput = document.getElementById('lvl-input-id');
+    var nameInput = document.getElementById('lvl-input-name');
+    var syncInputs = function () {
+      if (idInput) self.editorState.id = idInput.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_') || 'MI_SALA';
+      if (nameInput) self.editorState.name = nameInput.value.trim() || 'Mi Sala';
+      var codeOut = document.getElementById('lvl-code-output');
+      if (codeOut && typeof LevelTemplateSystem !== 'undefined') {
+        codeOut.value = LevelTemplateSystem.formatTemplateAsCode(self.editorState);
+      }
+    };
+    if (idInput) idInput.addEventListener('input', syncInputs);
+    if (nameInput) nameInput.addEventListener('input', syncInputs);
+
+    // Selector de plantilla existente
+    var tplSelect = document.getElementById('lvl-template-select');
+    if (tplSelect) {
+      tplSelect.addEventListener('change', function (e) {
+        var chosenId = e.currentTarget.value;
+        if (!chosenId || typeof LevelTemplateSystem === 'undefined') return;
+        var tpl = LevelTemplateSystem.getTemplateById(chosenId);
+        if (tpl) {
+          self.editorState.id = tpl.id;
+          self.editorState.name = tpl.name;
+          self.editorState.sectionTag = tpl.sectionTag || 'AUTOR';
+          self.editorState.grid = LevelTemplateSystem.normalizeGrid(tpl.grid);
+          self.renderLevelEditorTab();
+        }
+      });
+    }
+
+    // Botones de simetría, captura y limpieza
+    var btnMirrorX = document.getElementById('lvl-btn-mirror-x');
+    if (btnMirrorX) {
+      btnMirrorX.addEventListener('click', function () {
+        for (var r = 0; r < 9; r++) {
+          var chars = self.editorState.grid[r].split('');
+          for (var c = 0; c < 6; c++) {
+            chars[12 - c] = chars[c];
+          }
+          self.editorState.grid[r] = chars.join('');
+        }
+        self.renderLevelEditorTab();
+      });
+    }
+
+    var btnMirrorY = document.getElementById('lvl-btn-mirror-y');
+    if (btnMirrorY) {
+      btnMirrorY.addEventListener('click', function () {
+        for (var r = 0; r < 4; r++) {
+          self.editorState.grid[8 - r] = self.editorState.grid[r];
+        }
+        self.renderLevelEditorTab();
+      });
+    }
+
+    var btnCapture = document.getElementById('lvl-btn-capture');
+    if (btnCapture) {
+      btnCapture.addEventListener('click', function () {
+        var g = window.activeGameInstance;
+        if (!g || !g.currentRoom || typeof LevelTemplateSystem === 'undefined') return;
+        self.editorState.grid = LevelTemplateSystem.captureRoomToGrid(g.currentRoom);
+        self.renderLevelEditorTab();
+      });
+    }
+
+    var btnClear = document.getElementById('lvl-btn-clear');
+    if (btnClear) {
+      btnClear.addEventListener('click', function () {
+        var empty = [];
+        for (var r = 0; r < 9; r++) empty.push('.............');
+        self.editorState.grid = empty;
+        self.renderLevelEditorTab();
+      });
+    }
+
+    // Probar en vivo en la sala actual
+    var btnApplyLive = document.getElementById('lvl-btn-apply-live');
+    if (btnApplyLive) {
+      btnApplyLive.addEventListener('click', function () {
+        syncInputs();
+        var g = window.activeGameInstance;
+        if (!g || !g.currentRoom || typeof LevelTemplateSystem === 'undefined') {
+          self.log('WARN', 'Inicia una partida primero para probar la sala en vivo.');
+          return;
+        }
+        LevelTemplateSystem.applyTemplateToRoom(g.currentRoom, self.editorState, {
+          flipX: false,
+          flipY: false,
+          spawnMultiplier: 1.0,
+          eliteChanceMult: 1.0
+        });
+        // Asegurar que el jugador quede en posición caminable y con gracia breve
+        var safeP = g.currentRoom.getWalkablePosition(g.player.x, g.player.y, g.player.radius);
+        g.player.x = safeP.x;
+        g.player.y = safeP.y;
+        g.player.roomTransitionGrace = 0.6;
+        for (var k = 0; k < g.currentRoom.enemies.length; k++) {
+          g.currentRoom.enemies[k].reactionDelay = 0.65;
+        }
+        if (g.ui) {
+          g.ui.updateRoomInfo(g.currentRoom, g.currentFloor);
+          g.ui.showToast('🗺️ Plantilla "' + self.editorState.name + '" aplicada en vivo');
+        }
+        self.log('INFO', 'Plantilla "' + self.editorState.id + '" aplicada en vivo a la sala actual.');
+        self.toggle(false);
+      });
+    }
+
+    // Guardar en catálogo local y copiar código JS
+    var btnSaveCustom = document.getElementById('lvl-btn-save-custom');
+    if (btnSaveCustom) {
+      btnSaveCustom.addEventListener('click', function () {
+        syncInputs();
+        if (typeof LevelTemplateSystem === 'undefined') return;
+        var saved = LevelTemplateSystem.saveCustomTemplate(self.editorState);
+        var codeStr = LevelTemplateSystem.formatTemplateAsCode(self.editorState);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(codeStr).catch(function () {});
+        }
+        if (saved) {
+          self.log('INFO', 'Plantilla "' + saved.id + '" guardada en el catálogo y copiada al portapapeles.');
+          if (window.activeGameInstance && window.activeGameInstance.ui) {
+            window.activeGameInstance.ui.showToast('💾 Plantilla "' + saved.name + '" guardada en el catálogo y copiada al portapapeles');
+          }
+          self.renderLevelEditorTab();
+        }
+      });
     }
   };
 
@@ -566,6 +973,24 @@
     var body = document.getElementById('dev-console-body');
     if (!body) return;
 
+    var weaponCardsHtml = '';
+    if (typeof WeaponSystem !== 'undefined') {
+      var allWeapons = WeaponSystem.getAllWeaponDefs();
+      var weaponBtns = allWeapons.map(function (wDef) {
+        var tagsLabel = (wDef.tags && wDef.tags.length > 0) ? wDef.tags.join(', ') : 'CUSTOM';
+        return '  <button type="button" class="dev-tool-btn" data-equip-weapon="' + wDef.id + '">' +
+          '    <span>' + wDef.symbol + ' ' + wDef.name + ' <span style="color:#38bdf8;font-size:0.64rem;">[' + tagsLabel + ']</span></span>' +
+          '    <small>' + (wDef.description || 'Arma modular de weapons.js') + '</small>' +
+          '  </button>';
+      }).join('\n');
+      weaponCardsHtml = [
+        '<div class="eye-card" style="margin-top:4px;">',
+        '  <div class="eye-card-title">⚔️ PROBAR / EQUIPAR ARMAS DESDE WEAPONS.JS (PLUG & PLAY)</div>',
+        '  <div class="dev-tools-grid">' + weaponBtns + '</div>',
+        '</div>'
+      ].join('\n');
+    }
+
     body.innerHTML = [
       '<div class="dev-tools-grid">',
       '  <button type="button" class="dev-tool-btn" data-action="RESCUE_PLAYER">',
@@ -575,6 +1000,10 @@
       '  <button type="button" class="dev-tool-btn" data-action="CLEAR_PROJECTILES">',
       '    <span>🧹 LIMPIAR PROYECTILES Y TRAMPAS</span>',
       '    <small>Elimina todos los proyectiles en vuelo y charcos activos de la habitación actual.</small>',
+      '  </button>',
+      '  <button type="button" class="dev-tool-btn" data-action="OPEN_LEVEL_EDITOR">',
+      '    <span>🗺️ ABRIR EDITOR VISUAL DE SALAS (13x9)</span>',
+      '    <small>Diseña tus propias secciones con rocas, fosos, trampas y enemigos, y pruébalas en vivo.</small>',
       '  </button>',
       '  <button type="button" class="dev-tool-btn" data-action="FORCE_SPIKE">',
       '    <span>⚡ FORZAR SALA "PIES EN LA TIERRA"</span>',
@@ -592,7 +1021,8 @@
       '    <span>🌋 PROBAR BUILD METEORITOS (STRESS TEST)</span>',
       '    <small>Otorga Fuego Nvl 3 + Pólvora Inestable + +3 Proyectiles para verificar que no se congele la sala.</small>',
       '  </button>',
-      '</div>'
+      '</div>',
+      weaponCardsHtml
     ].join('\n');
 
     var btns = body.querySelectorAll('[data-action]');
@@ -602,9 +1032,29 @@
         self.runQuickAction(act);
       });
     }
+
+    var equipBtns = body.querySelectorAll('[data-equip-weapon]');
+    for (var j = 0; j < equipBtns.length; j++) {
+      equipBtns[j].addEventListener('click', function (e) {
+        var weaponId = e.currentTarget.getAttribute('data-equip-weapon');
+        var g = window.activeGameInstance;
+        if (!g || !g.player || typeof WeaponSystem === 'undefined') {
+          self.log('WARN', 'Inicia una partida primero para equipar "' + weaponId + '".');
+          return;
+        }
+        WeaponSystem.giveWeapon(g.player, weaponId, true);
+        self.log('INFO', 'Arma equipada/seleccionada desde weapons.js: ' + weaponId);
+        self.toggle(false);
+      });
+    }
   };
 
   InGameDevConsole.prototype.runQuickAction = function (action) {
+    if (action === 'OPEN_LEVEL_EDITOR') {
+      this.setTab('LEVEL_EDITOR');
+      return;
+    }
+
     var game = window.activeGameInstance;
     if (!game || !game.player || !game.currentRoom) {
       this.log('WARN', 'Inicia una partida primero para usar las herramientas en vivo.');
@@ -686,7 +1136,7 @@
   InGameDevConsole.prototype.executeCommand = function (cmd) {
     this.log('INFO', '> ' + cmd);
     if (cmd.toLowerCase() === 'help') {
-      this.log('INFO', 'Comandos útiles: BrotherEye.getStatus() | game.player.hp = 200 | game.player.coins += 100 | BrotherEye.setEnabled(false)');
+      this.log('INFO', 'Comandos útiles: WeaponSystem.giveWeapon(game.player, "ABYSS_SHOTGUN") | BrotherEye.getStatus() | LevelTemplateSystem.getAllRoomTemplates()');
       this.setTab('LOGS');
       return;
     }

@@ -22,6 +22,7 @@ const EVOLUTION_DEFS = {
   NAPALM_CLUSTER: {
     id: 'NAPALM_CLUSTER',
     weaponName: 'Pelotas',
+    weaponTag: 'PROJECTILE',
     element: 'FIRE',
     requiredLevel: 3,
     title: 'Lanzagranadas de Napalm',
@@ -32,6 +33,7 @@ const EVOLUTION_DEFS = {
   TESLA_ORB: {
     id: 'TESLA_ORB',
     weaponName: 'Pelotas',
+    weaponTag: 'PROJECTILE',
     element: 'ELECTRIC',
     requiredLevel: 3,
     title: 'Bobina de Tesla Errante',
@@ -42,6 +44,7 @@ const EVOLUTION_DEFS = {
   BLIZZARD_BURST: {
     id: 'BLIZZARD_BURST',
     weaponName: 'Pelotas',
+    weaponTag: 'PROJECTILE',
     element: 'ICE',
     requiredLevel: 3,
     title: 'Supernova de Ventisca',
@@ -56,6 +59,7 @@ const EVOLUTION_DEFS = {
   ZERO_ABSOLUTE_BEAM: {
     id: 'ZERO_ABSOLUTE_BEAM',
     weaponName: 'Rayo Láser',
+    weaponTag: 'BEAM',
     element: 'ICE',
     requiredLevel: 3,
     title: 'Haz de Cero Absoluto',
@@ -66,6 +70,7 @@ const EVOLUTION_DEFS = {
   THERMONUCLEAR_RAY: {
     id: 'THERMONUCLEAR_RAY',
     weaponName: 'Rayo Láser',
+    weaponTag: 'BEAM',
     element: 'FIRE',
     requiredLevel: 3,
     title: 'Haz Solar Termonuclear',
@@ -76,6 +81,7 @@ const EVOLUTION_DEFS = {
   ION_SPLITTER: {
     id: 'ION_SPLITTER',
     weaponName: 'Rayo Láser',
+    weaponTag: 'BEAM',
     element: 'ELECTRIC',
     requiredLevel: 3,
     title: 'Cañón de Dispersión Iónica',
@@ -90,6 +96,7 @@ const EVOLUTION_DEFS = {
   STORM_DIVINE_BLADE: {
     id: 'STORM_DIVINE_BLADE',
     weaponName: 'Espada Larga',
+    weaponTag: 'MELEE',
     element: 'ELECTRIC',
     requiredLevel: 3,
     title: 'Filo de Tormenta Divina',
@@ -100,6 +107,7 @@ const EVOLUTION_DEFS = {
   PHOENIX_CLEAVE: {
     id: 'PHOENIX_CLEAVE',
     weaponName: 'Espada Larga',
+    weaponTag: 'MELEE',
     element: 'FIRE',
     requiredLevel: 3,
     title: 'Mandoble del Fénix Solar',
@@ -110,6 +118,7 @@ const EVOLUTION_DEFS = {
   VORPAL_CARMINE: {
     id: 'VORPAL_CARMINE',
     weaponName: 'Espada Larga',
+    weaponTag: 'MELEE',
     element: 'BLEED',
     requiredLevel: 3,
     title: 'Cuchilla Vorpal Carmesí',
@@ -441,9 +450,34 @@ class EvolutionManager {
    * @param {string} weaponName
    * @returns {object|null}
    */
-  static getActiveEvolution(player, weaponName) {
+  static getActiveEvolution(player, weaponOrName) {
     if (!player || !player.elementalPool) return null;
 
+    let weaponObj = null;
+    let weaponName = '';
+    if (weaponOrName && typeof weaponOrName === 'object') {
+      weaponObj = weaponOrName;
+      weaponName = weaponObj.name || '';
+    } else if (typeof weaponOrName === 'string') {
+      weaponName = weaponOrName;
+      if (Array.isArray(player.weapons)) {
+        weaponObj = player.weapons.find((w) => w.name === weaponName || w.id === weaponName) || null;
+      }
+      if (!weaponObj && player.currentWeapon && player.currentWeapon.name === weaponName) {
+        weaponObj = player.currentWeapon;
+      }
+    }
+
+    // 1. Evoluciones personalizadas declaradas directamente dentro de `weapons.js`
+    if (weaponObj && weaponObj.def && Array.isArray(weaponObj.def.evolutions)) {
+      for (const customEvo of weaponObj.def.evolutions) {
+        const req = customEvo.requiredLevel || 3;
+        const lvl = player.elementalPool[customEvo.element] || 0;
+        if (lvl >= req) return customEvo;
+      }
+    }
+
+    // 2. Coincidencia exacta por nombre de arma
     for (const key in EVOLUTION_DEFS) {
       const evo = EVOLUTION_DEFS[key];
       if (evo.weaponName === weaponName) {
@@ -453,6 +487,20 @@ class EvolutionManager {
         }
       }
     }
+
+    // 3. Herencia automática por etiqueta (`PROJECTILE`, `BEAM`, `MELEE`) para armas nuevas
+    if (weaponObj && typeof WeaponSystem !== 'undefined') {
+      for (const key in EVOLUTION_DEFS) {
+        const evo = EVOLUTION_DEFS[key];
+        if (evo.weaponTag && WeaponSystem.weaponHasTag(weaponObj, evo.weaponTag)) {
+          const currentLvl = player.elementalPool[evo.element] || 0;
+          if (currentLvl >= evo.requiredLevel) {
+            return evo;
+          }
+        }
+      }
+    }
+
     return null;
   }
 
@@ -468,11 +516,20 @@ class EvolutionManager {
       player.unlockedEvolutions = new Set();
     }
 
-    for (const key in EVOLUTION_DEFS) {
-      const evo = EVOLUTION_DEFS[key];
+    const allCandidateEvos = Object.values(EVOLUTION_DEFS);
+    if (Array.isArray(player.weapons)) {
+      for (const w of player.weapons) {
+        if (w && w.def && Array.isArray(w.def.evolutions)) {
+          allCandidateEvos.push(...w.def.evolutions);
+        }
+      }
+    }
+
+    for (const evo of allCandidateEvos) {
+      const req = evo.requiredLevel || 3;
       const currentLvl = player.elementalPool[evo.element] || 0;
 
-      if (currentLvl >= evo.requiredLevel && !player.unlockedEvolutions.has(evo.id)) {
+      if (currentLvl >= req && !player.unlockedEvolutions.has(evo.id)) {
         player.unlockedEvolutions.add(evo.id);
 
         if (ui) {
@@ -483,7 +540,7 @@ class EvolutionManager {
           soundManager.playProcedural('pedestal', { volume: 0.95 });
         }
         if (room && typeof room.spawnParticle === 'function') {
-          room.spawnParticle(player.x, player.y, evo.color, 16);
+          room.spawnParticle(player.x, player.y, evo.color || '#facc15', 16);
           room.spawnParticle(player.x, player.y, '#ffffff', 10);
         }
         if (window.activeGameInstance) {
@@ -546,7 +603,7 @@ class EvolutionManager {
    */
   static onSwordSwing(sword, player, room, aimState) {
     if (!sword || !player || !room) return;
-    const evo = EvolutionManager.getActiveEvolution(player, 'Espada Larga');
+    const evo = EvolutionManager.getActiveEvolution(player, sword);
     if (!evo) return;
 
     if (evo.id === 'STORM_DIVINE_BLADE') {
@@ -595,7 +652,7 @@ class EvolutionManager {
    */
   static onLaserFired(laser, player, room, aimState, beamDef) {
     if (!laser || !player || !room) return;
-    const evo = EvolutionManager.getActiveEvolution(player, 'Rayo Láser');
+    const evo = EvolutionManager.getActiveEvolution(player, laser);
     if (!evo) return;
 
     if (evo.id === 'ZERO_ABSOLUTE_BEAM') {

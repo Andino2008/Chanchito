@@ -610,13 +610,14 @@ const RELIC_CATALOG = {
         } else {
           state.blackHole.duration -= dt;
           for (const enemy of room.enemies) {
-            if (enemy.markedForDeletion) continue;
+            if (enemy.markedForDeletion || enemy.isBurrowed) continue;
             const pull = MathUtils.normalize(
               state.blackHole.x - enemy.x,
               state.blackHole.y - enemy.y
             );
-            enemy.x += pull.x * 165 * dt;
-            enemy.y += pull.y * 165 * dt;
+            const pullMult = enemy.isBoss ? 0.22 : 1.0;
+            enemy.x += pull.x * 165 * pullMult * dt;
+            enemy.y += pull.y * 165 * pullMult * dt;
           }
           if (state.blackHole.duration <= 0) {
             for (const enemy of room.enemies) {
@@ -1035,8 +1036,15 @@ const RELIC_CATALOG = {
         if (state.freezeTimer > 0) {
           state.freezeTimer = Math.max(0, state.freezeTimer - dt);
           for (const enemy of room.enemies) {
-            enemy.vx = 0;
-            enemy.vy = 0;
+            if (enemy.isBoss) {
+              if (state.freezeTimer > 1.35) {
+                enemy.vx *= 0.45;
+                enemy.vy *= 0.45;
+              }
+            } else {
+              enemy.vx = 0;
+              enemy.vy = 0;
+            }
           }
         }
       },
@@ -1590,13 +1598,17 @@ const RELIC_CATALOG = {
           const dy = enemy.y - player.y;
 
           if (Math.hypot(dx, dy) <= radius) {
-            if (typeof enemy.setFrozen === 'function') {
-              enemy.setFrozen(1.5);
-            } else {
+            if (enemy.isBoss) {
               enemy.applyElementalEffect?.('ICE', room, 1);
+            } else {
+              if (typeof enemy.setFrozen === 'function') {
+                enemy.setFrozen(1.5);
+              } else {
+                enemy.applyElementalEffect?.('ICE', room, 1);
+              }
+              enemy.frozen = true;
+              enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 1.5);
             }
-            enemy.frozen = true;
-            enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 1.5);
           }
         }
 
@@ -2711,6 +2723,14 @@ class ItemManager {
         stats.critChance =
           critDelta > 0 ? Math.min(1.0, snapshot.critChance + critDelta * eff) : probe.critChance;
       }
+    }
+
+    if ((this.player.adrenalineTimer || 0) > 0) {
+      const combatCfg = typeof COMBAT_CONFIG !== 'undefined' ? COMBAT_CONFIG : null;
+      const spdBonus = combatCfg ? (combatCfg.PERFECT_DODGE_SPEED_BONUS || 0.25) : 0.25;
+      const aspdBonus = combatCfg ? (combatCfg.PERFECT_DODGE_ASPD_BONUS || 0.20) : 0.20;
+      stats.speed *= 1 + spdBonus;
+      stats.attackSpeedMultiplier *= 1 + aspdBonus;
     }
 
     this.player.maxHp = Math.max(1, Math.round(stats.maxHp));

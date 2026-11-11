@@ -181,10 +181,10 @@ class InputManager {
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
 
-      if (e.code === 'Digit1') onWeaponSelect(0);
-      if (e.code === 'Digit2') onWeaponSelect(1);
-      if (e.code === 'Digit3') onWeaponSelect(2);
-      if (e.code === 'Digit4') onWeaponSelect(2);
+      if (/^Digit[1-9]$/.test(e.code)) {
+        const slotIdx = parseInt(e.code.replace('Digit', ''), 10) - 1;
+        onWeaponSelect(slotIdx);
+      }
       if (e.code === 'KeyQ') onWeaponSelect('prev');
       if (e.code === 'KeyE') {
         if (window.activeGameInstance && window.activeGameInstance.tryInteract()) {
@@ -1991,12 +1991,16 @@ class EnemyProjectile extends Entity {
     super(x, y, radius, '#fb923c');
     const ngMult = isMortalMode ? (4 * ngPlusLevel) : (1 + ngPlusLevel);
     const eyeDmgMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
-      ? BrotherEye.getEnemyDamageMultiplier()
+      ? Math.min(1.25, BrotherEye.getEnemyDamageMultiplier())
       : 1.0;
     this.vx = dirX * speed;
     this.vy = dirY * speed;
     this.damage = Math.max(1, Math.round(damage * ngMult * eyeDmgMult));
     this.lifeTime = 2.6;
+    this.glowColor = 'rgba(249, 115, 22, 0.34)';
+    this.coreColor = '#fff7ed';
+    this.ringColor = '#f97316';
+    this._perfectDodged = false;
   }
 
   update(dt, player, room) {
@@ -2020,6 +2024,14 @@ class EnemyProjectile extends Entity {
     }
 
     if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
+      const isDashing = typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player);
+      if (isDashing) {
+        if (!this._perfectDodged) {
+          this._perfectDodged = true;
+          CombatSystem.triggerPerfectDodge(player, room, this.x, this.y);
+        }
+        return;
+      }
       player.takeDamage(this.damage, room, { isProjectile: true, vx: this.vx, vy: this.vy });
       room.spawnParticle(this.x, this.y, -this.vx * 0.25, -this.vy * 0.25, 4, '#fdba74', 0.35);
       this.markedForDeletion = true;
@@ -2028,13 +2040,26 @@ class EnemyProjectile extends Entity {
 
   draw(ctx) {
     ctx.save();
+    // Halo exterior + borde oscuro de alto contraste para destacarse sobre efectos del jugador
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius + 4, 0, Math.PI * 2);
+    ctx.fillStyle = this.glowColor;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius + 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#090d16';
+    ctx.fill();
+
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fillStyle = '#f97316';
+    ctx.fillStyle = this.ringColor;
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#ffedd5';
-    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, Math.max(2, this.radius * 0.52), 0, Math.PI * 2);
+    ctx.fillStyle = this.coreColor;
+    ctx.fill();
     ctx.restore();
   }
 }
@@ -2204,6 +2229,69 @@ class SoundEffectManager {
         gain.connect(ctx.destination);
         osc.start(now);
         osc.stop(now + 0.15);
+      } else if (type === 'perfect_dodge') {
+        const notes = [659.25, 987.77, 1318.51];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const st = now + idx * 0.032;
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, st);
+          gain.gain.setValueAtTime(0.28 * masterVol, st);
+          gain.gain.exponentialRampToValueAtTime(0.001, st + 0.14);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(st);
+          osc.stop(st + 0.14);
+        });
+      } else if (type === 'telegraph') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(210, now);
+        osc.frequency.exponentialRampToValueAtTime(390, now + 0.16);
+        gain.gain.setValueAtTime(0.22 * masterVol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.17);
+      } else if (type === 'boss_flash') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(920, now);
+        osc.frequency.exponentialRampToValueAtTime(1420, now + 0.08);
+        gain.gain.setValueAtTime(0.25 * masterVol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+      } else if (type === 'boss_slam') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(115, now);
+        osc.frequency.exponentialRampToValueAtTime(28, now + 0.24);
+        gain.gain.setValueAtTime(0.42 * masterVol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      } else if (type === 'boss_stun') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(280, now);
+        osc.frequency.exponentialRampToValueAtTime(85, now + 0.25);
+        gain.gain.setValueAtTime(0.32 * masterVol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.26);
       }
     } catch (e) {
       // Audio fallback
@@ -2582,7 +2670,13 @@ const SYNERGIES = {
     desc: 'El Rayo Láser deja una fisura glacial en el suelo (3.5s) que congela y ralentiza a los enemigos un 65%.',
     check(player) {
       const hasIce = hasPlayerRelic(player, 'FROZEN_HEART') || (player && player.elementalPool && (player.elementalPool.ICE || 0) > 0);
-      const isLaser = player && player.currentWeapon && (player.currentWeapon.name === 'Rayo Láser' || (typeof ChargeLaserWeapon !== 'undefined' && player.currentWeapon instanceof ChargeLaserWeapon));
+      const isLaser = Boolean(
+        player &&
+        player.currentWeapon &&
+        (typeof WeaponSystem !== 'undefined'
+          ? WeaponSystem.weaponHasTag(player.currentWeapon, 'BEAM')
+          : player.currentWeapon.name === 'Rayo Láser')
+      );
       return Boolean(hasIce && isLaser);
     }
   },
@@ -2593,7 +2687,13 @@ const SYNERGIES = {
     desc: 'Los Orbes Pesados detonan al final de su recorrido liberando 6 meteoritos ardientes en anillo.',
     check(player) {
       const hasFire = hasPlayerRelic(player, 'UNSTABLE_POWDER') || hasPlayerRelic(player, 'ASH_KING') || (player && player.elementalPool && (player.elementalPool.FIRE || 0) > 0);
-      const isProjectile = player && player.currentWeapon && (player.currentWeapon.name === 'Pelotas' || (typeof ProjectileWeapon !== 'undefined' && player.currentWeapon instanceof ProjectileWeapon));
+      const isProjectile = Boolean(
+        player &&
+        player.currentWeapon &&
+        (typeof WeaponSystem !== 'undefined'
+          ? WeaponSystem.weaponHasTag(player.currentWeapon, 'PROJECTILE')
+          : player.currentWeapon.name === 'Pelotas')
+      );
       return Boolean(hasFire && isProjectile);
     }
   },
@@ -2604,7 +2704,13 @@ const SYNERGIES = {
     desc: 'Ejecutar un Parry con la Espada convoca relámpagos celestes sobre TODOS los enemigos visibles en la sala.',
     check(player) {
       const hasLightning = hasPlayerRelic(player, 'VOLTAIC_ARC') || hasPlayerRelic(player, 'DIVINE_REVENGE') || (player && player.elementalPool && (player.elementalPool.LIGHTNING || 0) > 0);
-      const isSword = player && player.currentWeapon && (player.currentWeapon.name === 'Espada Larga' || (typeof LongSwordWeapon !== 'undefined' && player.currentWeapon instanceof LongSwordWeapon));
+      const isSword = Boolean(
+        player &&
+        player.currentWeapon &&
+        (typeof WeaponSystem !== 'undefined'
+          ? (WeaponSystem.weaponHasTag(player.currentWeapon, 'MELEE') || WeaponSystem.weaponHasTag(player.currentWeapon, 'PARRY'))
+          : player.currentWeapon.name === 'Espada Larga')
+      );
       return Boolean(hasLightning && isSword);
     }
   },
@@ -2665,357 +2771,10 @@ class SynergyManager {
 }
 
 // ----------------------------------------------------------------------------
-// 6. SISTEMA DE ARMAMENTOS (INTEGRADO CON HOOKS `onShoot` Y `onHit` v1.5)
+// 6. SISTEMA DE ARMAMENTOS (DESACOPLADO EN `weapons.js` - `WeaponSystem`)
+//    Las armas principales (`Pelotas`, `Rayo Láser`, `Espada Larga` y nuevas)
+//    se registran declarativamente en `weapons.js` sin dependencias en este archivo.
 // ----------------------------------------------------------------------------
-class Weapon {
-  constructor(name, description) {
-    this.name = name;
-    this.description = description;
-  }
-
-  cancel() {}
-  update(dt, player, room, aimState) {}
-  draw(ctx, player, aimState) {}
-}
-
-class ProjectileWeapon extends Weapon {
-  constructor() {
-    super('Pelotas', 'Dispara proyectiles continuos o grandes orbes de impacto');
-    this.mode = 0; // 0 = RÁFAGA RÁPIDA, 1 = ORBE PESADO
-    this.timer = 0;
-  }
-
-  cancel() {
-    this.timer = 0;
-  }
-
-  toggleMode() {
-    this.mode = this.mode === 0 ? 1 : 0;
-    return this.mode;
-  }
-
-  getModeBadge() {
-    return this.mode === 0 ? '[ESPACIO] MODO: RÁFAGA' : '[ESPACIO] MODO: ORBE PESADO';
-  }
-
-  update(dt, player, room, aimState) {
-    if (this.timer > 0) this.timer -= dt;
-
-    if (aimState.isAttacking && this.timer <= 0) {
-      if (this.mode === 0) {
-        // --- MODO 1: RÁFAGA RÁPIDA (Cadencia alta, corto alcance, daño medio) ---
-        const baseCd = 0.11;
-        const baseDmg = 18;
-        const effectiveCooldown = baseCd / player.attackSpeedMultiplier;
-        const effectiveDamage = Math.round(baseDmg * player.damageMultiplier);
-
-        this.timer = effectiveCooldown;
-        soundManager.play('pelotita', { volume: 0.65, pitchJitter: 0.05 });
-
-        const totalProjectiles = 1 + player.extraProjectiles;
-        const spreadStep = 0.14;
-        const spawnDist = player.radius + 8;
-
-        for (let i = 0; i < totalProjectiles; i++) {
-          const angleOffset = (i - (totalProjectiles - 1) / 2) * spreadStep;
-          const shotAngle = aimState.aimAngle + angleOffset;
-          const dirX = Math.cos(shotAngle);
-          const dirY = Math.sin(shotAngle);
-
-          const startX = player.x + dirX * spawnDist;
-          const startY = player.y + dirY * spawnDist;
-          const rolledElement = player.rollElementForAttack();
-          const elemLevel = player.getElementLevel(rolledElement);
-
-          const proj = new Projectile(
-            startX,
-            startY,
-            dirX,
-            dirY,
-            620,
-            effectiveDamage,
-            6.5,
-            rolledElement,
-            elemLevel
-          );
-          proj.lifeTime = 0.44; // Alcance corto/medio (~270px)
-          const pwEvo = typeof EvolutionManager !== 'undefined' ? EvolutionManager.getActiveEvolution(player, 'Pelotas') : null;
-          if (pwEvo) {
-            proj.evolutionId = pwEvo.id;
-            proj.color = pwEvo.color;
-            proj.borderColor = '#ffffff';
-            if (pwEvo.id === 'NAPALM_CLUSTER') {
-              proj.damage = Math.round(effectiveDamage * 1.25);
-            }
-          }
-          room.projectiles.push(proj);
-          player.itemManager.onShoot(proj, room);
-        }
-      } else {
-        // --- MODO 2: ORBES PESADOS (Cadencia menor, gran tamaño, alto daño y penetración) ---
-        const baseCd = 0.42;
-        const baseDmg = 55;
-        const effectiveCooldown = baseCd / player.attackSpeedMultiplier;
-        const effectiveDamage = Math.round(baseDmg * player.damageMultiplier);
-
-        this.timer = effectiveCooldown;
-        soundManager.play('pelotita', { volume: 0.95, pitchJitter: 0.02, attenuation: 0.2 });
-
-        const totalProjectiles = 1 + player.extraProjectiles;
-        const spreadStep = 0.18;
-        const spawnDist = player.radius + 14;
-
-        for (let i = 0; i < totalProjectiles; i++) {
-          const angleOffset = (i - (totalProjectiles - 1) / 2) * spreadStep;
-          const shotAngle = aimState.aimAngle + angleOffset;
-          const dirX = Math.cos(shotAngle);
-          const dirY = Math.sin(shotAngle);
-
-          const startX = player.x + dirX * spawnDist;
-          const startY = player.y + dirY * spawnDist;
-          const rolledElement = player.rollElementForAttack();
-          const elemLevel = player.getElementLevel(rolledElement);
-
-          const heavyOrb = new Projectile(
-            startX,
-            startY,
-            dirX,
-            dirY,
-            390,
-            effectiveDamage,
-            18,
-            rolledElement,
-            elemLevel
-          );
-          heavyOrb.lifeTime = 1.6;
-          heavyOrb.piercing = true;
-          heavyOrb.maxPierces = 3;
-          heavyOrb.isHeavyOrb = true;
-          const pwHeavyEvo = typeof EvolutionManager !== 'undefined' ? EvolutionManager.getActiveEvolution(player, 'Pelotas') : null;
-          if (pwHeavyEvo) {
-            heavyOrb.evolutionId = pwHeavyEvo.id;
-            heavyOrb.color = pwHeavyEvo.color;
-            heavyOrb.borderColor = '#ffffff';
-            if (pwHeavyEvo.id === 'NAPALM_CLUSTER') {
-              heavyOrb.damage = Math.round(effectiveDamage * 1.35);
-            }
-          }
-          room.projectiles.push(heavyOrb);
-          player.itemManager.onShoot(heavyOrb, room);
-        }
-
-        if (window.activeGameInstance) {
-          window.activeGameInstance.triggerScreenShake(2.0, 0.09);
-        }
-      }
-    }
-  }
-
-  draw(ctx, player, aimState) {
-    ctx.save();
-    ctx.translate(player.x, player.y);
-    ctx.rotate(aimState.aimAngle);
-    if (this.mode === 0) {
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(player.radius - 2, -3.5, 12, 7);
-      ctx.fillStyle = '#f87171';
-      ctx.fillRect(player.radius + 4, -2, 6, 4);
-    } else {
-      ctx.fillStyle = '#b91c1c';
-      ctx.fillRect(player.radius - 2, -6, 14, 12);
-      ctx.beginPath();
-      ctx.arc(player.radius + 14, 0, 7, 0, Math.PI * 2);
-      ctx.fillStyle = '#f87171';
-      ctx.fill();
-      ctx.strokeStyle = '#fca5a5';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-}
-
-class LongSwordWeapon extends Weapon {
-  constructor() {
-    super('Espada Larga', 'Parry deflector de proyectiles o tajo pesado devastador');
-    this.mode = 0; // 0 = PARRY DEFLECTOR, 1 = TAJO PESADO
-    this.cooldownTimer = 0;
-    this.swingTimer = 0;
-    this.swingDuration = 0.12;
-    this.reach = 98;
-    this.arcAngle = (Math.PI * 2) * 0.38;
-    this.swingCenterAngle = 0;
-    this.currentSwingElement = 'NONE';
-    this.currentSwingElementLevel = 1;
-    this.hitEnemies = new Set();
-    this.parriedProjectiles = new Set();
-  }
-
-  cancel() {
-    this.swingTimer = 0;
-    this.cooldownTimer = 0;
-    this.hitEnemies.clear();
-    this.parriedProjectiles.clear();
-  }
-
-  toggleMode() {
-    this.mode = this.mode === 0 ? 1 : 0;
-    return this.mode;
-  }
-
-  getModeBadge() {
-    return this.mode === 0 ? '[ESPACIO] MODO: PARRY' : '[ESPACIO] MODO: TAJO PESADO';
-  }
-
-  update(dt, player, room, aimState) {
-    if (this.cooldownTimer > 0) this.cooldownTimer -= dt;
-
-    const isParryMode = this.mode === 0;
-    const baseCooldown = isParryMode ? 0.28 : 0.58;
-    const baseDuration = isParryMode ? 0.11 : 0.20;
-    const baseReach = isParryMode ? 96 : 118;
-    const baseDamage = isParryMode ? 30 : 95;
-    const arcAngle = isParryMode ? Math.PI * 0.72 : Math.PI * 0.88;
-
-    const effectiveCooldown = baseCooldown / player.attackSpeedMultiplier;
-    const effectiveDamage = Math.round(baseDamage * player.damageMultiplier);
-
-    if (aimState.isAttacking && this.cooldownTimer <= 0 && this.swingTimer <= 0) {
-      this.swingDuration = Math.max(0.07, baseDuration / player.attackSpeedMultiplier);
-      this.swingTimer = this.swingDuration;
-      this.cooldownTimer = effectiveCooldown;
-      this.reach = baseReach;
-      this.arcAngle = arcAngle;
-      soundManager.play('espada', { volume: 0.85, pitchJitter: isParryMode ? 0.08 : 0.02 });
-      this.swingCenterAngle = aimState.aimAngle;
-      this.currentSwingElement = player.rollElementForAttack();
-      this.currentSwingElementLevel = player.getElementLevel(this.currentSwingElement);
-      this.hitEnemies.clear();
-      this.parriedProjectiles.clear();
-
-      // Hook de Evolución Mecánica de Armas
-      if (typeof EvolutionManager !== 'undefined') {
-        EvolutionManager.onSwordSwing(this, player, room, aimState);
-      }
-
-      // En Modo Tajo Pesado: si tiene proyectiles extra, desata ondas de corte crescentes
-      if (!isParryMode && player.extraProjectiles > 0) {
-        const count = player.extraProjectiles;
-        const spreadStep = 0.22;
-        for (let i = 0; i < count; i++) {
-          const offset = (i - (count - 1) / 2) * spreadStep;
-          const angle = aimState.aimAngle + offset;
-          const dx = Math.cos(angle);
-          const dy = Math.sin(angle);
-          const waveElement = player.rollElementForAttack();
-          const waveLevel = player.getElementLevel(waveElement);
-          const waveProj = new Projectile(
-            player.x + dx * (player.radius + 12),
-            player.y + dy * (player.radius + 12),
-            dx,
-            dy,
-            480,
-            Math.round(effectiveDamage * 0.55),
-            9,
-            waveElement,
-            waveLevel
-          );
-          waveProj.lifeTime = 0.65;
-          waveProj.piercing = true;
-          waveProj.maxPierces = 2;
-          room.projectiles.push(waveProj);
-          player.itemManager.onShoot(waveProj, room);
-        }
-      }
-    }
-
-    if (this.swingTimer > 0) {
-      this.swingTimer -= dt;
-      this.swingCenterAngle = aimState.aimAngle;
-
-      // 1. Interacción con proyectiles (Parry reflectivo + Corte destructor de balas)
-      if (typeof CombatSystem !== 'undefined') {
-        CombatSystem.processSwordProjectileInteractions(this, player, room, aimState);
-      } else if (isParryMode && room.enemyProjectiles && room.enemyProjectiles.length > 0) {
-        // Fallback básico si CombatSystem no estuviese cargado
-        for (const ep of room.enemyProjectiles) {
-          if (ep.markedForDeletion || this.parriedProjectiles.has(ep)) continue;
-          const dx = ep.x - player.x;
-          const dy = ep.y - player.y;
-          if (Math.hypot(dx, dy) <= this.reach + ep.radius + 10) {
-            ep.markedForDeletion = true;
-            this.parriedProjectiles.add(ep);
-          }
-        }
-      }
-
-      // 2. DAÑO MELEE A ENEMIGOS (Hit-Stop + Game Juice modular)
-      for (const enemy of room.enemies) {
-        if (enemy.markedForDeletion || enemy.isBurrowed || this.hitEnemies.has(enemy)) continue;
-
-        const dx = enemy.x - player.x;
-        const dy = enemy.y - player.y;
-        const dist = Math.hypot(dx, dy);
-
-        if (dist <= this.reach + enemy.radius) {
-          const angleToEnemy = Math.atan2(dy, dx);
-          const diff = Math.abs(MathUtils.angleDiff(angleToEnemy, this.swingCenterAngle));
-
-          if (diff <= this.arcAngle / 2 || dist <= player.radius + enemy.radius + 8) {
-            this.hitEnemies.add(enemy);
-            if (typeof CombatSystem !== 'undefined') {
-              CombatSystem.processSwordEnemyImpact(this, player, room, enemy, aimState);
-            } else {
-              enemy.takeDamage(effectiveDamage, 0, 0, this.currentSwingElement);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  draw(ctx, player, aimState) {
-    if (this.swingTimer <= 0) {
-      ctx.save();
-      ctx.translate(player.x, player.y);
-      ctx.rotate(aimState.aimAngle + 0.45);
-      ctx.fillStyle = this.mode === 0 ? '#38bdf8' : '#cbd5e1';
-      ctx.fillRect(player.radius, -2, this.mode === 0 ? 22 : 28, this.mode === 0 ? 4 : 5);
-      ctx.restore();
-      return;
-    }
-
-    const isParry = this.mode === 0;
-    const elemCfg = ELEMENTS[this.currentSwingElement] || ELEMENTS.NONE;
-    const progress = 1 - this.swingTimer / this.swingDuration;
-    const startAngle = this.swingCenterAngle - this.arcAngle / 2;
-    const endAngle = this.swingCenterAngle + this.arcAngle / 2;
-    const currentBladeAngle = startAngle + (endAngle - startAngle) * progress;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(player.x, player.y);
-    ctx.arc(player.x, player.y, this.reach, startAngle, endAngle);
-    ctx.closePath();
-    ctx.fillStyle = isParry
-      ? 'rgba(56, 189, 248, 0.25)'
-      : this.currentSwingElement === 'NONE'
-      ? 'rgba(226, 232, 240, 0.32)'
-      : `${elemCfg.color}44`;
-    ctx.fill();
-    ctx.lineWidth = isParry ? 2.5 : 3;
-    ctx.strokeStyle = isParry ? '#38bdf8' : elemCfg.color;
-    ctx.stroke();
-
-    ctx.translate(player.x, player.y);
-    ctx.rotate(currentBladeAngle);
-    ctx.fillStyle = isParry ? '#7dd3fc' : elemCfg.color;
-    ctx.fillRect(player.radius - 4, isParry ? -3 : -5, this.reach - player.radius + 4, isParry ? 6 : 10);
-    ctx.fillStyle = isParry ? '#0284c7' : '#f59e0b';
-    ctx.fillRect(player.radius - 6, isParry ? -7 : -10, 6, isParry ? 14 : 20);
-    ctx.restore();
-  }
-}
 
 class OrbitalDefenseShield {
   constructor(player) {
@@ -3173,313 +2932,6 @@ class OrbitalDefenseShield {
   }
 }
 
-class ChargeLaserWeapon extends Weapon {
-  constructor() {
-    super('Rayo Láser', 'Haz colosal de alta potencia o ráfagas rápidas de pulso');
-    this.mode = 0; // 0 = MEGA HAZ DE CARGA, 1 = RÁFAGAS DE PULSO
-    this.currentCharge = 0;
-    this.baseMaxCharge = 0.92;
-    this.cooldownTimer = 0;
-    this.beamMaxLength = 1450;
-    this.activeBeams = [];
-  }
-
-  cancel() {
-    this.currentCharge = 0;
-    this.cooldownTimer = 0;
-  }
-
-  toggleMode() {
-    this.mode = this.mode === 0 ? 1 : 0;
-    this.currentCharge = 0;
-    return this.mode;
-  }
-
-  getModeBadge() {
-    return this.mode === 0 ? '[ESPACIO] MODO: MEGA HAZ' : '[ESPACIO] MODO: PULSO LÁSER';
-  }
-
-  getEffectiveMaxCharge(player) {
-    return Math.max(0.3, this.baseMaxCharge / player.attackSpeedMultiplier);
-  }
-
-  update(dt, player, room, aimState) {
-    if (this.cooldownTimer > 0) this.cooldownTimer -= dt;
-
-    for (let i = this.activeBeams.length - 1; i >= 0; i--) {
-      this.activeBeams[i].timer -= dt;
-      if (this.activeBeams[i].timer <= 0) {
-        this.activeBeams.splice(i, 1);
-      }
-    }
-
-    if (this.mode === 0) {
-      // --- MODO 1: MEGA HAZ DE CARGA ---
-      const maxCharge = this.getEffectiveMaxCharge(player);
-
-      if (aimState.isAttacking && this.cooldownTimer <= 0) {
-        this.currentCharge += dt;
-        if (this.currentCharge >= maxCharge) {
-          this.fireMegaLaser(player, room, aimState);
-          this.currentCharge = 0;
-          this.cooldownTimer = 0.35 / player.attackSpeedMultiplier;
-        }
-      } else {
-        if (this.currentCharge > 0 && !aimState.isAttacking) {
-          this.currentCharge = 0;
-        }
-      }
-    } else {
-      // --- MODO 2: RÁFAGA DE PULSO ---
-      this.currentCharge = 0;
-      const pulseCd = 0.28 / player.attackSpeedMultiplier;
-      if (aimState.isAttacking && this.cooldownTimer <= 0) {
-        this.firePulseLaser(player, room, aimState);
-        this.cooldownTimer = pulseCd;
-      }
-    }
-  }
-
-  fireMegaLaser(player, room, aimState) {
-    soundManager.play('laser', { volume: 1.0, pitchJitter: 0.02, attenuation: 0.2 });
-    if (window.activeGameInstance) {
-      window.activeGameInstance.triggerScreenShake(5.5, 0.22);
-      window.activeGameInstance.triggerHitStop(0.05);
-    }
-    const beamCount = 1 + player.extraProjectiles;
-    const spreadStep = 0.12;
-    const effectiveDamage = Math.round(175 * player.damageMultiplier);
-    const beamHalfWidth = 22;
-
-    for (let i = 0; i < beamCount; i++) {
-      const angleOffset = (i - (beamCount - 1) / 2) * spreadStep;
-      const angle = aimState.aimAngle + angleOffset;
-      const dirX = Math.cos(angle);
-      const dirY = Math.sin(angle);
-
-      const startX = player.x + dirX * (player.radius + 6);
-      const startY = player.y + dirY * (player.radius + 6);
-      const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
-      const wallHit = MathUtils.getRayWallIntersection(startX, startY, dirX, dirY, this.beamMaxLength, rb);
-      const endX = wallHit.x;
-      const endY = wallHit.y;
-
-      const beamElement = player.rollElementForAttack();
-      const beamElemLevel = player.getElementLevel(beamElement);
-      const elemCfg = ELEMENTS[beamElement] || ELEMENTS.NONE;
-
-      for (const enemy of room.enemies) {
-        if (enemy.markedForDeletion || enemy.isBurrowed) continue;
-
-        const distToBeam = MathUtils.pointToSegmentDistance(
-          enemy.x,
-          enemy.y,
-          startX,
-          startY,
-          endX,
-          endY
-        );
-
-        if (distToBeam <= enemy.radius + beamHalfWidth) {
-          if (enemy.isGuarding && typeof enemy.onGuardedHit === 'function') {
-            enemy.onGuardedHit(player, room, player);
-            continue;
-          }
-          let laserHitDamage = effectiveDamage;
-          if (player.critChance > 0 && Math.random() < player.critChance) {
-            laserHitDamage *= 2.0;
-            room.spawnParticle(enemy.x, enemy.y, '#fef08a', 8);
-          }
-          const dealt = enemy.takeDamage(laserHitDamage, dirX * 380, dirY * 380, beamElement);
-          if (beamElement !== 'NONE' && !enemy.markedForDeletion) {
-            enemy.applyElementalEffect(beamElement, room, beamElemLevel);
-          }
-          const attackContext = { isLaser: true, element: beamElement, damage: dealt, x: enemy.x, y: enemy.y };
-          player.itemManager.onHit(attackContext, enemy, room, dealt);
-        }
-      }
-
-      const beamEntry = {
-        x1: startX,
-        y1: startY,
-        x2: endX,
-        y2: endY,
-        color: beamElement === 'NONE' ? '#d946ef' : elemCfg.color,
-        halfWidth: beamHalfWidth,
-        timer: 0.30,
-        maxTimer: 0.30,
-      };
-
-      if (typeof EvolutionManager !== 'undefined') {
-        EvolutionManager.onLaserFired(this, player, room, aimState, beamEntry);
-      }
-
-      this.activeBeams.push(beamEntry);
-
-      if (wallHit.hitWall && room && typeof room.spawnParticle === 'function') {
-        for (let sp = 0; sp < 8; sp++) {
-          const sparkAng = Math.atan2(-dirY, -dirX) + (Math.random() - 0.5) * 1.5;
-          const sparkSpd = 90 + Math.random() * 140;
-          room.spawnParticle(endX, endY, Math.cos(sparkAng) * sparkSpd, Math.sin(sparkAng) * sparkSpd, 4, elemCfg.color || '#f0abfc', 0.28);
-        }
-      }
-    }
-  }
-
-  firePulseLaser(player, room, aimState) {
-    soundManager.play('laser', { volume: 0.75, pitchJitter: 0.08, attenuation: 0.4 });
-    if (window.activeGameInstance) {
-      window.activeGameInstance.triggerScreenShake(2.0, 0.08);
-    }
-    const beamCount = 1 + player.extraProjectiles;
-    const spreadStep = 0.15;
-    const effectiveDamage = Math.round(38 * player.damageMultiplier);
-    const pulseLength = 540;
-    const pulseHalfWidth = 9;
-
-    for (let i = 0; i < beamCount; i++) {
-      const angleOffset = (i - (beamCount - 1) / 2) * spreadStep;
-      const angle = aimState.aimAngle + angleOffset;
-      const dirX = Math.cos(angle);
-      const dirY = Math.sin(angle);
-
-      const startX = player.x + dirX * (player.radius + 6);
-      const startY = player.y + dirY * (player.radius + 6);
-      const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
-      const wallHit = MathUtils.getRayWallIntersection(startX, startY, dirX, dirY, pulseLength, rb);
-      const endX = wallHit.x;
-      const endY = wallHit.y;
-
-      const beamElement = player.rollElementForAttack();
-      const beamElemLevel = player.getElementLevel(beamElement);
-      const elemCfg = ELEMENTS[beamElement] || ELEMENTS.NONE;
-
-      for (const enemy of room.enemies) {
-        if (enemy.markedForDeletion || enemy.isBurrowed) continue;
-
-        const distToBeam = MathUtils.pointToSegmentDistance(
-          enemy.x,
-          enemy.y,
-          startX,
-          startY,
-          endX,
-          endY
-        );
-
-        if (distToBeam <= enemy.radius + pulseHalfWidth) {
-          if (enemy.isGuarding && typeof enemy.onGuardedHit === 'function') {
-            enemy.onGuardedHit(player, room, player);
-            continue;
-          }
-          let laserHitDamage = effectiveDamage;
-          if (player.critChance > 0 && Math.random() < player.critChance) {
-            laserHitDamage *= 2.0;
-            room.spawnParticle(enemy.x, enemy.y, '#fef08a', 5);
-          }
-          const dealt = enemy.takeDamage(laserHitDamage, dirX * 180, dirY * 180, beamElement);
-          if (beamElement !== 'NONE' && !enemy.markedForDeletion) {
-            enemy.applyElementalEffect(beamElement, room, beamElemLevel);
-          }
-          const attackContext = { isLaser: true, element: beamElement, damage: dealt, x: enemy.x, y: enemy.y };
-          player.itemManager.onHit(attackContext, enemy, room, dealt);
-        }
-      }
-
-      this.activeBeams.push({
-        x1: startX,
-        y1: startY,
-        x2: endX,
-        y2: endY,
-        color: beamElement === 'NONE' ? '#38bdf8' : elemCfg.color,
-        halfWidth: pulseHalfWidth,
-        timer: 0.14,
-        maxTimer: 0.14,
-      });
-
-      if (wallHit.hitWall && room && typeof room.spawnParticle === 'function') {
-        for (let sp = 0; sp < 4; sp++) {
-          const sparkAng = Math.atan2(-dirY, -dirX) + (Math.random() - 0.5) * 1.5;
-          const sparkSpd = 70 + Math.random() * 100;
-          room.spawnParticle(endX, endY, Math.cos(sparkAng) * sparkSpd, Math.sin(sparkAng) * sparkSpd, 3, elemCfg.color || '#38bdf8', 0.2);
-        }
-      }
-    }
-  }
-
-  draw(ctx, player, aimState) {
-    ctx.save();
-
-    if (this.mode === 0 && this.currentCharge > 0) {
-      const maxCharge = this.getEffectiveMaxCharge(player);
-      const ratio = MathUtils.clamp(this.currentCharge / maxCharge, 0, 1);
-      const beamCount = 1 + player.extraProjectiles;
-      const spreadStep = 0.12;
-
-      for (let i = 0; i < beamCount; i++) {
-        const angleOffset = (i - (beamCount - 1) / 2) * spreadStep;
-        const angle = aimState.aimAngle + angleOffset;
-        const dirX = Math.cos(angle);
-        const dirY = Math.sin(angle);
-
-        const startX = player.x + dirX * (player.radius + 4);
-        const startY = player.y + dirY * (player.radius + 4);
-        const room = window.activeGameInstance ? window.activeGameInstance.currentRoom : null;
-        const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
-        const wallHit = MathUtils.getRayWallIntersection(startX, startY, dirX, dirY, this.beamMaxLength, rb);
-        const endX = wallHit.x;
-        const endY = wallHit.y;
-
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.strokeStyle = `rgba(232, 121, 249, ${0.2 + ratio * 0.7})`;
-        ctx.lineWidth = 1 + ratio * 6;
-        ctx.setLineDash([8, 6]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.beginPath();
-        ctx.arc(startX, startY, 4 + ratio * 12, 0, Math.PI * 2);
-        ctx.fillStyle = '#f0abfc';
-        ctx.fill();
-      }
-
-      const barW = 44;
-      const barH = 6;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-      ctx.fillRect(player.x - barW / 2, player.y - player.radius - 18, barW, barH);
-      ctx.fillStyle = '#e879f9';
-      ctx.fillRect(player.x - barW / 2, player.y - player.radius - 18, barW * ratio, barH);
-    }
-
-    for (const beam of this.activeBeams) {
-      const alpha = beam.timer / beam.maxTimer;
-      const hw = beam.halfWidth || 16;
-
-      ctx.beginPath();
-      ctx.moveTo(beam.x1, beam.y1);
-      ctx.lineTo(beam.x2, beam.y2);
-      ctx.strokeStyle = beam.color;
-      ctx.globalAlpha = alpha * 0.75;
-      ctx.lineWidth = hw * 2 * alpha;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(beam.x1, beam.y1);
-      ctx.lineTo(beam.x2, beam.y2);
-      ctx.strokeStyle = '#ffffff';
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = Math.max(2, hw * 0.65 * alpha);
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-
-    ctx.restore();
-  }
-}
-
 // ----------------------------------------------------------------------------
 // 7. JERARQUÍA DE ENEMIGOS: ENEMY, SHOOTER, SPLITTER Y ELITEENEMY (v1.5)
 // ----------------------------------------------------------------------------
@@ -3528,7 +2980,8 @@ class Enemy extends Entity {
 
     this.activeEffects = [];
     this.freezeMeter = 0;
-    this.maxFreezeMeter = 100;
+    this.maxFreezeMeter = isBoss ? 220 : 100;
+    this.ccImmunityTimer = 0;
 
     this.elementalAffinities = {
       NONE: 1.0,
@@ -3629,6 +3082,21 @@ class Enemy extends Entity {
     return finalDamage;
   }
 
+  applyDoTDamage(rawAmount, element = 'NONE') {
+    if (this.markedForDeletion || this.isCycleInvulnerable || rawAmount <= 0) return 0;
+    this.hp -= rawAmount;
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.markedForDeletion = true;
+      if (window.synergyEngine) {
+        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
+        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
+        window.synergyEngine.onEnemyKilled(this, room, player);
+      }
+    }
+    return rawAmount;
+  }
+
   hasEffect(type) {
     return this.activeEffects.some((e) => e.type === type);
   }
@@ -3650,23 +3118,52 @@ class Enemy extends Entity {
       const existing = this.getEffect('FIRE');
       if (existing) {
         existing.dps += stackDps;
+        if (this.isBoss) {
+          existing.dps = Math.min(85 * levelMultiplier, existing.dps);
+          existing.timer = 5.0;
+        }
       } else {
-        this.activeEffects.push({ type: 'FIRE', dps: baseDps });
+        this.activeEffects.push(
+          this.isBoss
+            ? { type: 'FIRE', dps: Math.min(85 * levelMultiplier, baseDps), timer: 5.0 }
+            : { type: 'FIRE', dps: baseDps }
+        );
       }
     } else if (elementType === 'BLEED') {
       const baseDmgPerPixel = 0.24 * levelMultiplier;
       const existing = this.getEffect('BLEED');
       if (existing) {
-        existing.stacks += 1;
+        existing.stacks = this.isBoss ? Math.min(6, existing.stacks + 1) : (existing.stacks + 1);
         existing.damagePerPixel = baseDmgPerPixel * existing.stacks;
+        if (this.isBoss) existing.timer = 5.0;
       } else {
         this.activeEffects.push({
           type: 'BLEED',
           stacks: 1,
           damagePerPixel: baseDmgPerPixel,
+          ...(this.isBoss ? { timer: 5.0 } : {})
         });
       }
     } else if (elementType === 'ELECTRIC') {
+      if (this.isBoss) {
+        // Tenacidad de Jefe: choque eléctrico porcentual acotado y micro-slow sin congelar la FSM
+        const bossShock = Math.min(this.maxHp * 0.04, 48 * levelMultiplier);
+        this.takeDamage(bossShock, 0, 0, 'ELECTRIC');
+        if (this.markedForDeletion) return;
+
+        if ((this.ccImmunityTimer || 0) <= 0) {
+          this.ccImmunityTimer = 3.5;
+          const existingSlow = this.getEffect('BOSS_SLOW');
+          if (existingSlow) {
+            existingSlow.timer = Math.max(existingSlow.timer, 0.95);
+            existingSlow.speedMult = Math.min(existingSlow.speedMult, 0.72);
+          } else {
+            this.activeEffects.push({ type: 'BOSS_SLOW', timer: 0.95, speedMult: 0.72 });
+          }
+        }
+        return;
+      }
+
       const rawShock = this.maxHp * 0.3;
       this.takeDamage(rawShock, 0, 0, 'ELECTRIC');
       if (this.markedForDeletion) return;
@@ -3679,27 +3176,67 @@ class Enemy extends Entity {
         this.activeEffects.push({ type: 'ELECTRIC', timer: stunDuration });
       }
     } else if (elementType === 'ICE') {
+      if (this.isBoss) {
+        if ((this.ccImmunityTimer || 0) > 0 || this.isBurrowed || this.isGuarding || (this.invulnerableTimer || 0) > 0) {
+          return;
+        }
+        this.freezeMeter += 36 * affinity;
+        if (this.freezeMeter >= this.maxFreezeMeter) {
+          this.freezeMeter = 0;
+          this.ccImmunityTimer = 5.0;
+          this.setFrozen(0.55);
+          const existingSlow = this.getEffect('BOSS_SLOW');
+          if (existingSlow) {
+            existingSlow.timer = Math.max(existingSlow.timer, 1.8);
+            existingSlow.speedMult = Math.min(existingSlow.speedMult, 0.65);
+          } else {
+            this.activeEffects.push({ type: 'BOSS_SLOW', timer: 1.8, speedMult: 0.65 });
+          }
+        }
+        return;
+      }
+
       this.freezeMeter += 50 * affinity;
       if (this.freezeMeter >= this.maxFreezeMeter) {
         this.freezeMeter = 0;
         const baseFreezeTime = 2.4 * levelMultiplier;
         this.setFrozen(baseFreezeTime * affinity);
 
-        const candidates = [];
-        for (const other of room.enemies) {
-          if (other === this || other.markedForDeletion) continue;
-          const dist = Math.hypot(other.x - this.x, other.y - this.y);
-          candidates.push({ enemy: other, dist });
-        }
+        if (room && room.enemies) {
+          const candidates = [];
+          for (const other of room.enemies) {
+            if (other === this || other.markedForDeletion) continue;
+            const dist = Math.hypot(other.x - this.x, other.y - this.y);
+            candidates.push({ enemy: other, dist });
+          }
 
-        candidates.sort((a, b) => a.dist - b.dist);
-        for (const item of candidates.slice(0, 2)) {
-          const neighborAffinity = item.enemy.getElementalAffinityMultiplier('ICE');
-          item.enemy.setFrozen(baseFreezeTime * neighborAffinity);
-          room.spawnParticle(item.enemy.x, item.enemy.y, 0, -40, 6, ELEMENTS.ICE.color, 0.5);
+          candidates.sort((a, b) => a.dist - b.dist);
+          for (const item of candidates.slice(0, 2)) {
+            const neighborAffinity = item.enemy.getElementalAffinityMultiplier('ICE');
+            item.enemy.setFrozen(baseFreezeTime * neighborAffinity);
+            room.spawnParticle(item.enemy.x, item.enemy.y, 0, -40, 6, ELEMENTS.ICE.color, 0.5);
+          }
         }
       }
     } else if (elementType === 'MIRACLE') {
+      if (this.isBoss) {
+        // Tenacidad de Jefe: "Discordia Astral" en vez de ejecución instantánea a los 4s
+        const existingAstral = this.getEffect('MIRACLE_BOSS');
+        const tickDmg = Math.round(32 * levelMultiplier);
+        if (!existingAstral) {
+          this.activeEffects.push({
+            type: 'MIRACLE_BOSS',
+            timer: 3.0,
+            tickTimer: 0.75,
+            damagePerTick: tickDmg,
+          });
+        } else {
+          existingAstral.timer = 3.0;
+          existingAstral.damagePerTick = Math.max(existingAstral.damagePerTick, tickDmg);
+        }
+        return;
+      }
+
       const miracleDuration = Math.max(
         0.6,
         4.0 * Math.pow(1 - CONFIG.ELEMENT_EXTRA_LEVEL_BONUS, extraLevels)
@@ -3715,7 +3252,7 @@ class Enemy extends Entity {
         existing.timer = Math.min(existing.timer, miracleDuration);
       }
     } else if (elementType === 'POISON') {
-      this.applyPoisonEffect(4.0 * levelMultiplier, 20 * levelMultiplier);
+      this.applyPoisonEffect(4.0 * levelMultiplier, (this.isBoss ? 18 : 20) * levelMultiplier);
     }
   }
 
@@ -3816,6 +3353,7 @@ class Enemy extends Entity {
   update(dt, player, allEnemies, room) {
     if (this.markedForDeletion) return;
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
+    if (this.ccImmunityTimer > 0) this.ccImmunityTimer = Math.max(0, this.ccImmunityTimer - dt);
     this.aiTimer += dt;
 
     // Retardo de reacción inicial al entrar el jugador a la sala (0.25s para evaluar la situación)
@@ -3835,6 +3373,7 @@ class Enemy extends Entity {
     }
 
     let isStunnedOrFrozen = false;
+    let bossSlowMult = 1.0;
     let miracleEffect = null;
     let bleedEffect = null;
     const defenseMitigation = this.getDefenseMitigationMultiplier();
@@ -3845,27 +3384,30 @@ class Enemy extends Entity {
       if (eff.type === 'FIRE') {
         if (!this.isCycleInvulnerable) {
           const fireAffinity = this.getElementalAffinityMultiplier('FIRE');
-          this.hp -= eff.dps * fireAffinity * defenseMitigation * dt;
-          if (this.hp <= 0) {
-            this.hp = 0;
-            this.markedForDeletion = true;
-            return;
-          }
+          this.applyDoTDamage(eff.dps * fireAffinity * defenseMitigation * dt, 'FIRE');
+          if (this.markedForDeletion) return;
+        }
+        if (typeof eff.timer === 'number') {
+          eff.timer -= dt;
+          if (eff.timer <= 0) this.activeEffects.splice(i, 1);
         }
       } else if (eff.type === 'POISON') {
         eff.timer -= dt;
         if (!this.isCycleInvulnerable) {
-          this.hp -= eff.dps * defenseMitigation * dt;
-          if (this.hp <= 0) {
-            this.hp = 0;
-            this.markedForDeletion = true;
-            return;
-          }
+          this.applyDoTDamage(eff.dps * defenseMitigation * dt, 'POISON');
+          if (this.markedForDeletion) return;
         }
         if (eff.timer <= 0) {
           this.activeEffects.splice(i, 1);
         }
       } else if (eff.type === 'BLEED') {
+        if (typeof eff.timer === 'number') {
+          eff.timer -= dt;
+          if (eff.timer <= 0) {
+            this.activeEffects.splice(i, 1);
+            continue;
+          }
+        }
         bleedEffect = eff;
       } else if (eff.type === 'ELECTRIC' || eff.type === 'ICE') {
         eff.timer -= dt;
@@ -3873,6 +3415,28 @@ class Enemy extends Entity {
           this.activeEffects.splice(i, 1);
         } else {
           isStunnedOrFrozen = true;
+        }
+      } else if (eff.type === 'BOSS_SLOW') {
+        eff.timer -= dt;
+        if (eff.timer <= 0) {
+          this.activeEffects.splice(i, 1);
+        } else {
+          bossSlowMult = Math.min(bossSlowMult, eff.speedMult || 0.72);
+        }
+      } else if (eff.type === 'MIRACLE_BOSS') {
+        eff.timer -= dt;
+        eff.tickTimer -= dt;
+        if (eff.tickTimer <= 0) {
+          eff.tickTimer = 0.75;
+          const mirAffinity = this.getElementalAffinityMultiplier('MIRACLE');
+          this.applyDoTDamage(eff.damagePerTick * mirAffinity * defenseMitigation, 'MIRACLE');
+          if (room && typeof room.spawnParticle === 'function') {
+            room.spawnParticle(this.x, this.y - this.radius * 0.5, 0, -50, 5, '#e879f9', 0.4);
+          }
+          if (this.markedForDeletion) return;
+        }
+        if (eff.timer <= 0) {
+          this.activeEffects.splice(i, 1);
         }
       } else if (eff.type === 'MIRACLE') {
         eff.timer -= dt;
@@ -3907,13 +3471,13 @@ class Enemy extends Entity {
     } else {
       let { moveVx, moveVy } = this.computeAIMovement(dt, targetEntity, miracleEffect, room);
 
-      // Reducción de velocidad ambiental (ej. 50% al pisar un `PoisonPuddle` en v1.9)
+      // Reducción de velocidad ambiental (ej. 50% al pisar un `PoisonPuddle` en v1.9) y slow elemental en Jefes
       const envSpeedMult =
         room && typeof room.getEntitySpeedMultiplier === 'function'
           ? room.getEntitySpeedMultiplier(this)
           : 1.0;
-      moveVx *= envSpeedMult;
-      moveVy *= envSpeedMult;
+      moveVx *= envSpeedMult * bossSlowMult;
+      moveVy *= envSpeedMult * bossSlowMult;
 
       if (!miracleEffect) {
         for (const other of allEnemies) {
@@ -3986,14 +3550,14 @@ class Enemy extends Entity {
 
     if (bleedEffect) {
       const distMoved = Math.hypot(this.x - prevX, this.y - prevY);
-      if (distMoved > 0) {
+      const effectiveDist = this.isBoss ? Math.min(distMoved, 260 * dt) : distMoved;
+      if (effectiveDist > 0) {
         const bleedAffinity = this.getElementalAffinityMultiplier('BLEED');
-        this.hp -= distMoved * bleedEffect.damagePerPixel * bleedAffinity * defenseMitigation;
-        if (this.hp <= 0) {
-          this.hp = 0;
-          this.markedForDeletion = true;
-          return;
-        }
+        this.applyDoTDamage(
+          effectiveDist * bleedEffect.damagePerPixel * bleedAffinity * defenseMitigation,
+          'BLEED'
+        );
+        if (this.markedForDeletion) return;
       }
     }
 
@@ -4729,12 +4293,25 @@ class ExpandingRingHazard extends Entity {
       return;
     }
 
-    if (!this.hasHitPlayer) {
+    if (!this.hasHitPlayer && player) {
       const dist = Math.hypot(player.x - this.x, player.y - this.y);
       const radialDiff = Math.abs(dist - this.currentRadius);
       if (radialDiff <= this.ringThickness + player.radius * 0.7) {
-        this.hasHitPlayer = true;
-        player.takeDamage(this.damage, room);
+        const isDashing = typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player);
+        const isParrying = (typeof WeaponSystem !== 'undefined')
+          ? WeaponSystem.isWeaponParrying(player.currentWeapon)
+          : Boolean(
+              player.currentWeapon &&
+              player.currentWeapon.mode === 0 &&
+              player.currentWeapon.swingTimer > 0
+            );
+        if (isDashing || isParrying) {
+          this.hasHitPlayer = true;
+          CombatSystem.triggerPerfectDodge(player, room, player.x, player.y, '⚡ ANILLO EVADIDO');
+        } else {
+          this.hasHitPlayer = true;
+          player.takeDamage(this.damage, room);
+        }
       }
     }
   }
@@ -4745,28 +4322,28 @@ class ExpandingRingHazard extends Entity {
     const alpha = Math.max(0.2, 1 - this.currentRadius / this.maxRadius);
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(244, 63, 94, ${alpha})`;
+    ctx.strokeStyle = `rgba(244, 63, 94, ${(alpha * 0.75).toFixed(2)})`;
     ctx.lineWidth = this.ringThickness;
     ctx.stroke();
 
+    // Borde interior cian/blanco de alto contraste (comunica patrón saltable con Dash)
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(254, 205, 211, ${alpha})`;
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(186, 230, 253, ${alpha.toFixed(2)})`;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.restore();
   }
 }
 
 /**
- * Clase Base `Boss` (Hereda de `Enemy` - v1.6)
+ * Clase Base `Boss` (Hereda de `Enemy` - v2.9)
  * Implementa:
- *  - Transición de Fases (`phase = 1 | 2` y gancho `onPhaseChange()` al 50% de HP).
- *  - Máquina de Estados Finita (FSM): `currentState`, `stateTimer`, `transitionToState()`,
- *    y lista `telegraphs` para dibujar indicadores visuales de peligro en el Canvas antes
- *    de instanciar hitboxes.
- *  - Armadura Direccional (`hasFrontalArmor`, `facingAngle`, `frontalDamageMultiplier`)
- *    resuelta mediante Producto Punto (dot product) sobre el vector del impacto.
+ *  - Transición de Fases con Phase Gate estricto al 50% de HP.
+ *  - Soft Boss Armor (DPS Cap suave anti-evaporación para builds rotas).
+ *  - Ventanas de Fatiga/Castigo (`isStaggered`, +25% daño recibido) y Animación Wind-Up.
+ *  - Máquina de Estados Finita (FSM) + Telegrafiados codificados por color/forma.
+ *  - Armadura Direccional (`hasFrontalArmor`, `facingAngle`, `frontalDamageMultiplier`).
  */
 class Boss extends Enemy {
   constructor(x, y, sectionNumber = 1, levelNumber = 1, bossTitle = 'JEFE') {
@@ -4792,15 +4369,25 @@ class Boss extends Enemy {
     const baseBossSpeed = 110 + ((sectionNumber - 1) * 4 + levelNumber) * 4;
     this.speed = Math.min(290, baseBossSpeed * this.ngSpeedMult);
 
-    // Sistema de Fases (al 50% de HP dispara onPhaseChange)
+    // Sistema de Fases (al 50% de HP dispara onPhaseChange con Phase Gate duro)
     this.phase = 1;
     this.phaseChanged = false;
 
-    // Máquina de Estados (FSM) y Telegrafiado
+    // Máquina de Estados (FSM), Wind-Up y Telegrafiado
     this.currentState = 'IDLE';
     this.stateTimer = 1.0;
     this.telegraphs = []; // Indicadores de peligro en el suelo [{ type: 'CIRCLE'|'LINE', ... }]
     this.invulnerableTimer = 0;
+    this.isWindup = false;
+    this.windupProgress = 0;
+    this.windupColor = '#f59e0b';
+    this.windupFlashPlayed = false;
+
+    // Ventana de Castigo / Fatiga (`isStaggered`) y Soft Boss Armor (DPS Cap)
+    this.isStaggered = false;
+    this.staggerVulnerableMult = 1.0;
+    this.dpsMeter = 0;
+    this.lastDpsArmorRatio = 1.0;
 
     // Estados especiales de Jefes v1.8
     this.isBurrowed = false; // Abismo: Invulnerable bajo tierra + Z-Index lógico
@@ -4817,10 +4404,14 @@ class Boss extends Enemy {
   getDefenseStatusText() {
     if (this.isBurrowed) return 'Bajo Tierra (INVULNERABLE)';
     if (this.isGuarding) return 'Guardia Celestial (CONTRAATAQUE)';
+    if (this.isStaggered) return '¡ATURDIDO / EXPUESTO (+25% DMG)!';
     if (this.orbitShields && this.orbitShields.length > 0) {
-      return '4 Escudos Orbitales + Clon (1s)';
+      return this.orbitExpanded ? 'Escudos Abiertos (¡VULNERABLE!)' : '4 Escudos Orbitales + Clon';
     }
     if (this.hasFrontalArmor) return 'Escudo Frontal Activo (-80% DMG)';
+    if (this.lastDpsArmorRatio < 0.82) {
+      return `Armadura Anti-Burst (${Math.round(this.lastDpsArmorRatio * 100)}% DMG)`;
+    }
     return this.phase === 2 ? 'Fase 2 Desatada (100% DMG)' : 'Vulnerable (100% DMG)';
   }
 
@@ -4831,8 +4422,32 @@ class Boss extends Enemy {
     this.currentState = newState;
     this.stateTimer = duration;
     this.telegraphs = [];
+    this.isWindup = false;
+    this.windupProgress = 0;
+    this.windupFlashPlayed = false;
+    if (!newState.includes('STUNNED') && !newState.includes('RECOVERY') && !newState.includes('EXHAUSTED')) {
+      this.isStaggered = false;
+      this.staggerVulnerableMult = 1.0;
+    }
+    if (newState.includes('TELEGRAPH') || newState.includes('WINDUP')) {
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('telegraph', { volume: 0.35 });
+      }
+    }
     if (this.onBossStateChanged) {
       this.onBossStateChanged(this);
+    }
+  }
+
+  setWindup(active, progress = 0, color = '#f59e0b') {
+    this.isWindup = Boolean(active);
+    this.windupProgress = MathUtils.clamp(progress, 0, 1);
+    this.windupColor = color;
+    if (this.isWindup && this.windupProgress >= 0.82 && !this.windupFlashPlayed) {
+      this.windupFlashPlayed = true;
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('boss_flash', { volume: 0.42 });
+      }
     }
   }
 
@@ -4849,23 +4464,100 @@ class Boss extends Enemy {
    */
   onPhaseChange() {
     this.phase = 2;
+    this.isStaggered = false;
+    this.staggerVulnerableMult = 1.0;
+    this.dpsMeter = 0;
+    this.lastDpsArmorRatio = 1.0;
     if (this.onBossStateChanged) {
       this.onBossStateChanged(this);
     }
   }
 
+  getDpsSoftThreshold() {
+    return Math.max(105, this.maxHp * 0.14);
+  }
+
+  applyBurstCappedDamage(postMitigationDamage) {
+    if (postMitigationDamage <= 0) return 0;
+    const threshold = this.getDpsSoftThreshold();
+    if (this.dpsMeter <= threshold) {
+      this.dpsMeter += postMitigationDamage;
+      this.lastDpsArmorRatio = 1.0;
+      return postMitigationDamage;
+    }
+    const overload = (this.dpsMeter - threshold) / threshold;
+    const armorMult = Math.max(0.24, 1 / (1 + overload * 0.85));
+    const capped = Math.max(1, postMitigationDamage * armorMult);
+    this.dpsMeter += capped;
+    this.lastDpsArmorRatio = armorMult;
+    return capped;
+  }
+
+  handlePhaseGateAndHealthClamp(prevHp) {
+    const phaseThreshold = Math.ceil(this.maxHp * 0.5);
+    if (!this.phaseChanged && prevHp > phaseThreshold && this.hp <= phaseThreshold) {
+      // Phase Gate estricto: ningún golpe/DoT único puede evaporar la Fase 2
+      this.hp = phaseThreshold;
+      this.markedForDeletion = false;
+      this.phaseChanged = true;
+      this.phase = 2;
+      if (window.bossPhaseManager) {
+        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
+        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
+        window.bossPhaseManager.triggerPhaseShift(this, room, player);
+      }
+      this.onPhaseChange();
+      return true;
+    }
+    if (!this.phaseChanged && this.hp > 0 && this.hp <= this.maxHp * 0.5) {
+      this.phaseChanged = true;
+      this.phase = 2;
+      if (window.bossPhaseManager) {
+        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
+        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
+        window.bossPhaseManager.triggerPhaseShift(this, room, player);
+      }
+      this.onPhaseChange();
+      return true;
+    }
+    return false;
+  }
+
+  update(dt, player, allEnemies, room) {
+    const threshold = this.getDpsSoftThreshold();
+    this.dpsMeter = Math.max(0, this.dpsMeter - threshold * dt);
+    if (this.dpsMeter <= threshold * 0.85) {
+      this.lastDpsArmorRatio = 1.0;
+    }
+    super.update(dt, player, allEnemies, room);
+  }
+
+  applyDoTDamage(rawAmount, element = 'NONE') {
+    if (this.invulnerableTimer > 0 || this.isBurrowed || this.isGuarding || this.markedForDeletion || rawAmount <= 0) {
+      return 0;
+    }
+    const prevHp = this.hp;
+    const capped = this.applyBurstCappedDamage(rawAmount);
+    this.hp -= capped;
+    this.handlePhaseGateAndHealthClamp(prevHp);
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.markedForDeletion = true;
+      if (window.synergyEngine) {
+        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
+        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
+        window.synergyEngine.onEnemyKilled(this, room, player);
+      }
+    }
+    if (this.onBossStateChanged) {
+      this.onBossStateChanged(this);
+    }
+    return capped;
+  }
+
   /**
-   * Sobrescribe `takeDamage` para calcular Armadura Direccional usando el Producto Punto
-   * entre el vector de orientación frontal del Jefe y el vector de impacto del ataque,
-   * y verificar el umbral del 50% de HP para disparar `onPhaseChange()`.
-   *
-   * Matemática de Armadura Direccional:
-   *  Sea F = (cos(facingAngle), sin(facingAngle)) el vector unitario hacia donde mira el escudo.
-   *  Sea V = normalize(kbVx, kbVy) el vector de dirección de viaje del proyectil/ataque.
-   *  El vector desde el centro del jefe hacia la procedencia del impacto es U = -V.
-   *  El producto punto `dot = F.x * U.x + F.y * U.y`:
-   *   - Si `dot > 0`: el golpe impacta de frente contra el escudo (80% reducción -> x0.20).
-   *   - Si `dot <= 0`: el golpe impacta por la espalda (0% reducción -> x1.00 daño total).
+   * Sobrescribe `takeDamage` para calcular Armadura Direccional, Ventana de Castigo (+25%),
+   * Soft Boss Armor (anti-burst) y Phase Gate duro en el 50% de HP.
    */
   takeDamage(rawDamage, kbVx = 0, kbVy = 0, element = 'NONE') {
     if (this.invulnerableTimer > 0 || this.isBurrowed || this.isGuarding || this.markedForDeletion) {
@@ -4890,29 +4582,69 @@ class Boss extends Enemy {
       }
     }
 
+    const staggerMult = this.isStaggered ? (this.staggerVulnerableMult || 1.25) : 1.0;
+    const isAstralWeakened = this.hasEffect('MIRACLE_BOSS') ? 1.2 : 1.0;
+    const scaledIncoming = rawDamage * directionalMultiplier * staggerMult * isAstralWeakened;
+    const cappedIncoming = this.applyBurstCappedDamage(scaledIncoming);
+    const prevHp = this.hp;
+
     const dealt = super.takeDamage(
-      rawDamage * directionalMultiplier,
+      cappedIncoming,
       kbVx * 0.25,
       kbVy * 0.25,
       element
     );
 
-    if (!this.phaseChanged && this.hp > 0 && this.hp <= this.maxHp * 0.5) {
-      this.phaseChanged = true;
-      this.phase = 2;
-      if (window.bossPhaseManager) {
-        const room = (window.activeGameInstance && window.activeGameInstance.currentRoom) ? window.activeGameInstance.currentRoom : null;
-        const player = (window.activeGameInstance && window.activeGameInstance.player) ? window.activeGameInstance.player : null;
-        window.bossPhaseManager.triggerPhaseShift(this, room, player);
-      }
-      this.onPhaseChange();
-    }
+    this.handlePhaseGateAndHealthClamp(prevHp);
 
     if (this.onBossStateChanged) {
       this.onBossStateChanged(this);
     }
 
     return dealt;
+  }
+
+  drawBodyShape(ctx, fillStyle, strokeStyle, lineWidth) {
+    ctx.save();
+    let jx = 0;
+    let jy = 0;
+    let scaleX = 1;
+    let scaleY = 1;
+
+    if (this.isWindup && this.windupProgress > 0) {
+      const shakeMag = this.windupProgress * 3.5;
+      jx = (Math.random() - 0.5) * 2 * shakeMag;
+      jy = (Math.random() - 0.5) * 2 * shakeMag;
+      scaleX = 1 - this.windupProgress * 0.22;
+      scaleY = 1 + this.windupProgress * 0.22;
+    } else if (this.isStaggered) {
+      const pant = 1 + Math.sin(this.aiTimer * 12) * 0.06;
+      scaleX = pant;
+      scaleY = 1 / pant;
+    }
+
+    ctx.translate(this.x + jx, this.y + jy);
+    ctx.rotate(this.facingAngle);
+    ctx.scale(scaleX, scaleY);
+
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+    ctx.lineWidth = this.isStaggered ? 4 : lineWidth;
+    ctx.strokeStyle = this.isStaggered ? '#38bdf8' : strokeStyle;
+    ctx.stroke();
+
+    // Flash de impacto inminente en los últimos 180ms del windup
+    if (this.isWindup && this.windupProgress >= 0.80) {
+      const flashAlpha = (Math.sin(this.aiTimer * 45) * 0.5 + 0.5) * 0.85 + 0.15;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 7, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${flashAlpha.toFixed(2)})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /**
@@ -4928,27 +4660,45 @@ class Boss extends Enemy {
     for (const tel of this.telegraphs) {
       if (tel.type === 'CIRCLE') {
         const progress = tel.progress !== undefined ? tel.progress : 0.5;
+        const isTeleport = tel.style === 'TELEPORT';
+        const isWindupGuard = tel.style === 'GUARD';
+        const baseRgb = isTeleport
+          ? '56, 189, 248'
+          : isWindupGuard
+          ? '250, 204, 21'
+          : '245, 158, 11';
+        const strokeHex = isTeleport
+          ? '#38bdf8'
+          : isWindupGuard
+          ? '#fde047'
+          : (progress >= 0.82 ? '#ffffff' : '#f59e0b');
+
         ctx.beginPath();
         ctx.arc(tel.x, tel.y, tel.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(239, 68, 68, ${0.16 + progress * 0.28})`;
+        ctx.fillStyle = `rgba(${baseRgb}, ${(0.14 + progress * 0.24).toFixed(2)})`;
         ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = progress >= 0.82 ? 3.5 : 2.5;
+        ctx.strokeStyle = strokeHex;
         ctx.setLineDash([8, 6]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Círculo interno creciente que indica el momento exacto del impacto (1s)
+        // Círculo interno creciente (o convergente para teletransporte)
+        const innerR = isTeleport
+          ? Math.max(4, tel.radius * (1 - MathUtils.clamp(progress, 0, 1)))
+          : tel.radius * MathUtils.clamp(progress, 0, 1);
         ctx.beginPath();
-        ctx.arc(tel.x, tel.y, tel.radius * MathUtils.clamp(progress, 0, 1), 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(252, 165, 165, 0.85)';
-        ctx.lineWidth = 2;
+        ctx.arc(tel.x, tel.y, innerR, 0, Math.PI * 2);
+        ctx.strokeStyle = progress >= 0.82 ? '#ffffff' : `rgba(${baseRgb}, 0.9)`;
+        ctx.lineWidth = 2.5;
         ctx.stroke();
       } else if (tel.type === 'LINE') {
+        const isPrimary = tel.active !== false;
+        const lineRgb = isPrimary ? '245, 158, 11' : '244, 63, 94';
         ctx.beginPath();
         ctx.moveTo(tel.x1, tel.y1);
         ctx.lineTo(tel.x2, tel.y2);
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.38)';
+        ctx.strokeStyle = `rgba(${lineRgb}, ${isPrimary ? 0.34 : 0.14})`;
         ctx.lineWidth = tel.width || 60;
         ctx.lineCap = 'round';
         ctx.stroke();
@@ -4956,11 +4706,26 @@ class Boss extends Enemy {
         ctx.beginPath();
         ctx.moveTo(tel.x1, tel.y1);
         ctx.lineTo(tel.x2, tel.y2);
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 4;
+        ctx.strokeStyle = isPrimary ? '#fbbf24' : 'rgba(244, 63, 94, 0.55)';
+        ctx.lineWidth = isPrimary ? 4 : 2;
         ctx.setLineDash([10, 6]);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Punta de flecha direccional geométrica (0 ctx.fillText) para leer el sentido al instante
+        if (isPrimary && tel.arrow !== false) {
+          const ang = Math.atan2(tel.y2 - tel.y1, tel.x2 - tel.x1);
+          const midX = (tel.x1 + tel.x2) * 0.5;
+          const midY = (tel.y1 + tel.y2) * 0.5;
+          const headSize = 13;
+          ctx.beginPath();
+          ctx.moveTo(midX + Math.cos(ang) * headSize, midY + Math.sin(ang) * headSize);
+          ctx.lineTo(midX + Math.cos(ang + 2.4) * headSize, midY + Math.sin(ang + 2.4) * headSize);
+          ctx.lineTo(midX + Math.cos(ang - 2.4) * headSize, midY + Math.sin(ang - 2.4) * headSize);
+          ctx.closePath();
+          ctx.fillStyle = '#fef08a';
+          ctx.fill();
+        }
       }
     }
     ctx.restore();
@@ -5002,19 +4767,19 @@ class GoliatBoss extends Boss {
 
     // Variables de Fase 1
     this.fanShootTimer = 0.9;
-    this.hammerRadius = 155;
+    this.hammerRadius = 140;
     this.hammerVisualExpand = 0;
     this.wallDashDir = { x: 0, y: 1 };
-    this.wallDashSpeed = 680;
+    this.wallDashSpeed = 640;
     this.wallDashHasHitPlayer = false;
 
     // Variables de Fase 2
     this.p2DashCount = 0;
     this.p2DashDir = { x: 0, y: 1 };
-    this.p2DashSpeed = 540;
+    this.p2DashSpeed = 510;
     this.hazardSpawnTimer = 0;
 
-    this.transitionToState('P1_MARCH', 3.4);
+    this.transitionToState('P1_MARCH', 3.2);
   }
 
   /**
@@ -5027,7 +4792,7 @@ class GoliatBoss extends Boss {
     this.hasFrontalArmor = false; // Pierde el escudo frontal (daño normal desde todos los ángulos)
     this.speed = this.basePhase1Speed * 2.0; // Duplica su velocidad base
     this.p2DashCount = 0;
-    this.transitionToState('P2_PREPARE_DASH', 0.45);
+    this.transitionToState('P2_PREPARE_DASH', 0.6);
   }
 
   rotateFacingTowards(targetX, targetY, dt, maxTurnSpeed = this.turnRate) {
@@ -5047,13 +4812,14 @@ class GoliatBoss extends Boss {
 
     let moveVx = 0;
     let moveVy = 0;
+    const rb = (room && room.bounds) ? room.bounds : ROOM_BOUNDS;
 
     // ========================================================================
     // MÁQUINA DE ESTADOS - FASE 1 (TANQUE LENTO CON ESCUDO FRONTAL)
     // ========================================================================
     if (this.phase === 1) {
       if (this.currentState === 'P1_MARCH') {
-        // Ataque 1 (Marcha): Avanza muy lento hacia el jugador disparando en abanico
+        this.hasFrontalArmor = true;
         this.rotateFacingTowards(targetEntity.x, targetEntity.y, dt, this.turnRate);
         const toPlayer = MathUtils.normalize(targetEntity.x - this.x, targetEntity.y - this.y);
         moveVx = toPlayer.x * this.speed;
@@ -5075,7 +4841,7 @@ class GoliatBoss extends Boss {
                 this.y + dy * (this.radius + 10),
                 dx,
                 dy,
-                275,
+                270,
                 15,
                 7
               )
@@ -5084,13 +4850,13 @@ class GoliatBoss extends Boss {
         }
 
         if (this.stateTimer <= 0) {
-          this.transitionToState('P1_HAMMER_TELEGRAPH', 1.0);
+          this.transitionToState('P1_HAMMER_TELEGRAPH', 1.05);
         }
       } else if (this.currentState === 'P1_HAMMER_TELEGRAPH') {
-        // Ataque 2 (Martillo Sísmico - Telegrafiado de 1.0s): Se detiene y dibuja círculo rojo
         moveVx = 0;
         moveVy = 0;
-        const progress = 1 - Math.max(0, this.stateTimer / 1.0);
+        const progress = 1 - Math.max(0, this.stateTimer / 1.05);
+        this.setWindup(true, progress, '#f59e0b');
         this.telegraphs = [
           {
             type: 'CIRCLE',
@@ -5102,9 +4868,12 @@ class GoliatBoss extends Boss {
         ];
 
         if (this.stateTimer <= 0) {
-          // Impacto del Martillo Sísmico tras 1 segundo
+          this.setWindup(false, 0);
           this.telegraphs = [];
           this.hammerVisualExpand = 0.35;
+          if (typeof soundManager !== 'undefined' && soundManager) {
+            soundManager.playProcedural('boss_slam', { volume: 0.55 });
+          }
           if (
             MathUtils.circleCollision(
               this.x,
@@ -5118,17 +4887,20 @@ class GoliatBoss extends Boss {
             targetEntity.takeDamage(28, room);
             const push = MathUtils.normalize(targetEntity.x - this.x, targetEntity.y - this.y);
             targetEntity.x = MathUtils.clamp(
-              targetEntity.x + push.x * 55,
-              ROOM_BOUNDS.left + targetEntity.radius,
-              ROOM_BOUNDS.right - targetEntity.radius
+              targetEntity.x + push.x * 50,
+              rb.left + targetEntity.radius,
+              rb.right - targetEntity.radius
             );
             targetEntity.y = MathUtils.clamp(
-              targetEntity.y + push.y * 55,
-              ROOM_BOUNDS.top + targetEntity.radius,
-              ROOM_BOUNDS.bottom - targetEntity.radius
+              targetEntity.y + push.y * 50,
+              rb.top + targetEntity.radius,
+              rb.bottom - targetEntity.radius
             );
           }
           if (room) {
+            if (typeof BossShockwaveHazard !== 'undefined') {
+              room.hazards.push(new BossShockwaveHazard(this.x, this.y, '#38bdf8', 250, 320, 14));
+            }
             for (let i = 0; i < 18; i++) {
               const ang = (Math.PI * 2 * i) / 18;
               room.spawnParticle(
@@ -5137,12 +4909,12 @@ class GoliatBoss extends Boss {
                 Math.cos(ang) * 210,
                 Math.sin(ang) * 210,
                 5,
-                '#ef4444',
+                '#f59e0b',
                 0.45
               );
             }
           }
-          this.transitionToState('P1_HAMMER_RECOVERY', 0.45);
+          this.transitionToState('P1_HAMMER_RECOVERY', 0.65);
         }
       } else if (this.currentState === 'P1_HAMMER_RECOVERY') {
         moveVx = 0;
@@ -5154,26 +4926,36 @@ class GoliatBoss extends Boss {
           this.transitionToState('P1_WALL_TELEGRAPH', 1.0);
         }
       } else if (this.currentState === 'P1_WALL_TELEGRAPH') {
-        // Ataque 3 (Muralla - Telegrafiado de 1.0s): Línea recta roja gruesa en el piso
         moveVx = 0;
         moveVy = 0;
+        const progress = 1 - Math.max(0, this.stateTimer / 1.0);
+        this.setWindup(true, progress, '#f59e0b');
+        const wallEnd = MathUtils.getRayWallIntersection(
+          this.x,
+          this.y,
+          this.wallDashDir.x,
+          this.wallDashDir.y,
+          440,
+          rb
+        );
         this.telegraphs = [
           {
             type: 'LINE',
             x1: this.x,
             y1: this.y,
-            x2: this.x + this.wallDashDir.x * 460,
-            y2: this.y + this.wallDashDir.y * 460,
-            width: this.radius * 2.1,
+            x2: wallEnd.x,
+            y2: wallEnd.y,
+            width: this.radius * 2.0,
+            active: true,
           },
         ];
 
         if (this.stateTimer <= 0) {
+          this.setWindup(false, 0);
           this.wallDashHasHitPlayer = false;
-          this.transitionToState('P1_WALL_DASH', 0.62);
+          this.transitionToState('P1_WALL_DASH', 0.64);
         }
       } else if (this.currentState === 'P1_WALL_DASH') {
-        // Ejecución de Muralla: Dash en línea recta a alta velocidad con gran daño y knockback
         moveVx = this.wallDashDir.x * this.wallDashSpeed;
         moveVy = this.wallDashDir.y * this.wallDashSpeed;
 
@@ -5189,22 +4971,61 @@ class GoliatBoss extends Boss {
           )
         ) {
           this.wallDashHasHitPlayer = true;
-          targetEntity.takeDamage(34, room);
+          targetEntity.takeDamage(32, room);
           targetEntity.x = MathUtils.clamp(
-            targetEntity.x + this.wallDashDir.x * 95,
-            ROOM_BOUNDS.left + targetEntity.radius,
-            ROOM_BOUNDS.right - targetEntity.radius
+            targetEntity.x + this.wallDashDir.x * 85,
+            rb.left + targetEntity.radius,
+            rb.right - targetEntity.radius
           );
           targetEntity.y = MathUtils.clamp(
-            targetEntity.y + this.wallDashDir.y * 95,
-            ROOM_BOUNDS.top + targetEntity.radius,
-            ROOM_BOUNDS.bottom - targetEntity.radius
+            targetEntity.y + this.wallDashDir.y * 85,
+            rb.top + targetEntity.radius,
+            rb.bottom - targetEntity.radius
           );
         }
 
+        // Contrajuego: si Goliat se estrella contra un muro, pierde su escudo temporalmente y queda aturdido
+        const nextX = this.x + moveVx * dt;
+        const nextY = this.y + moveVy * dt;
+        const hitWall =
+          nextX <= rb.left + this.radius + 2 ||
+          nextX >= rb.right - this.radius - 2 ||
+          nextY <= rb.top + this.radius + 2 ||
+          nextY >= rb.bottom - this.radius - 2;
+
+        if (hitWall) {
+          this.hasFrontalArmor = false;
+          this.isStaggered = true;
+          this.staggerVulnerableMult = 1.25;
+          if (typeof soundManager !== 'undefined' && soundManager) {
+            soundManager.playProcedural('boss_stun', { volume: 0.65 });
+          }
+          if (window.CombatSystem) {
+            window.CombatSystem.triggerScreenShake(10, 0.28);
+          }
+          if (room) {
+            for (let i = 0; i < 14; i++) {
+              const ang = Math.random() * Math.PI * 2;
+              room.spawnParticle(this.x, this.y, Math.cos(ang) * 160, Math.sin(ang) * 160, 4.5, '#38bdf8', 0.45);
+            }
+          }
+          this.transitionToState('P1_WALL_STUNNED', 1.45);
+        } else if (this.stateTimer <= 0) {
+          this.fanShootTimer = 0.55;
+          this.transitionToState('P1_MARCH', 3.2);
+        }
+      } else if (this.currentState === 'P1_WALL_STUNNED') {
+        moveVx = 0;
+        moveVy = 0;
+        this.hasFrontalArmor = false;
+        this.isStaggered = true;
+        this.staggerVulnerableMult = 1.25;
         if (this.stateTimer <= 0) {
-          this.fanShootTimer = 0.5;
-          this.transitionToState('P1_MARCH', 3.4);
+          this.hasFrontalArmor = true;
+          this.isStaggered = false;
+          this.staggerVulnerableMult = 1.0;
+          this.fanShootTimer = 0.6;
+          this.transitionToState('P1_MARCH', 3.2);
         }
       }
       return { moveVx, moveVy };
@@ -5217,39 +5038,60 @@ class GoliatBoss extends Boss {
       const toPlayer = MathUtils.normalize(targetEntity.x - this.x, targetEntity.y - this.y);
       this.p2DashDir = toPlayer.length > 0 ? { x: toPlayer.x, y: toPlayer.y } : { x: 1, y: 0 };
       this.facingAngle = Math.atan2(this.p2DashDir.y, this.p2DashDir.x);
-      moveVx = toPlayer.x * (this.speed * 0.5);
-      moveVy = toPlayer.y * (this.speed * 0.5);
+      moveVx = toPlayer.x * (this.speed * 0.45);
+      moveVy = toPlayer.y * (this.speed * 0.45);
+
+      const progress = 1 - Math.max(0, this.stateTimer / 0.55);
+      this.setWindup(true, progress, '#f59e0b');
+      const dashLineEnd = MathUtils.getRayWallIntersection(
+        this.x,
+        this.y,
+        this.p2DashDir.x,
+        this.p2DashDir.y,
+        265,
+        rb
+      );
+      this.telegraphs = [
+        {
+          type: 'LINE',
+          x1: this.x,
+          y1: this.y,
+          x2: dashLineEnd.x,
+          y2: dashLineEnd.y,
+          width: this.radius * 1.6,
+          active: true,
+        },
+      ];
 
       if (this.stateTimer <= 0) {
+        this.setWindup(false, 0);
+        this.telegraphs = [];
         this.hazardSpawnTimer = 0;
-        this.transitionToState('P2_EXPLOSIVE_DASH', 0.52);
+        this.transitionToState('P2_EXPLOSIVE_DASH', 0.50);
       }
     } else if (this.currentState === 'P2_EXPLOSIVE_DASH') {
-      // Ataque 1 (Dash Explosivo): Dashes hacia el jugador dejando suelo agrietado (0.5s delay)
       moveVx = this.p2DashDir.x * this.p2DashSpeed;
       moveVy = this.p2DashDir.y * this.p2DashSpeed;
 
       this.hazardSpawnTimer -= dt;
       if (this.hazardSpawnTimer <= 0 && room) {
-        this.hazardSpawnTimer = 0.12;
-        room.hazards.push(new CrackedGroundHazard(this.x, this.y, 44, 20, 0.5));
+        this.hazardSpawnTimer = 0.13;
+        room.hazards.push(new CrackedGroundHazard(this.x, this.y, 42, 20, 0.62));
       }
 
       if (this.stateTimer <= 0) {
         this.p2DashCount += 1;
         if (this.p2DashCount >= 3) {
-          // Cada 3 dashes, ejecuta el Ataque 2 (Salto de Anillos al centro, invulnerable 1s)
           this.p2DashCount = 0;
           this.invulnerableTimer = 1.0;
           this.transitionToState('P2_RING_JUMP_AIR', 1.0);
         } else {
-          this.transitionToState('P2_PREPARE_DASH', 0.35);
+          this.transitionToState('P2_PREPARE_DASH', 0.52);
         }
       }
     } else if (this.currentState === 'P2_RING_JUMP_AIR') {
-      // Salta hacia las coordenadas centrales de la sala siendo invulnerable durante 1 segundo
-      const dx = ROOM_BOUNDS.centerX - this.x;
-      const dy = ROOM_BOUNDS.centerY - this.y;
+      const dx = rb.centerX - this.x;
+      const dy = rb.centerY - this.y;
       moveVx = dx * 5.5;
       moveVy = dy * 5.5;
 
@@ -5257,32 +5099,35 @@ class GoliatBoss extends Boss {
       this.telegraphs = [
         {
           type: 'CIRCLE',
-          x: ROOM_BOUNDS.centerX,
-          y: ROOM_BOUNDS.centerY,
-          radius: 70,
+          x: rb.centerX,
+          y: rb.centerY,
+          radius: 74,
           progress,
         },
       ];
 
       if (this.stateTimer <= 0) {
-        this.x = ROOM_BOUNDS.centerX;
-        this.y = ROOM_BOUNDS.centerY;
+        this.x = rb.centerX;
+        this.y = rb.centerY;
         this.telegraphs = [];
+        this.invulnerableTimer = 0;
+        if (typeof soundManager !== 'undefined' && soundManager) {
+          soundManager.playProcedural('boss_slam', { volume: 0.65 });
+        }
 
-        // Al caer, emite 3 entidades en forma de anillos expansivos + BossShockwaveHazard
         if (room) {
           if (typeof BossShockwaveHazard !== 'undefined') {
-            room.hazards.push(new BossShockwaveHazard(this.x, this.y, '#ef4444', 360, 520, 18));
+            room.hazards.push(new BossShockwaveHazard(this.x, this.y, '#38bdf8', 320, 520, 16));
           }
           for (let i = 0; i < 3; i++) {
             room.hazards.push(
               new ExpandingRingHazard(
                 this.x,
                 this.y,
-                i * 0.42,
-                235,
+                i * 0.46,
+                225,
                 470,
-                18
+                16
               )
             );
           }
@@ -5299,7 +5144,19 @@ class GoliatBoss extends Boss {
             );
           }
         }
-        this.transitionToState('P2_PREPARE_DASH', 0.75);
+        this.isStaggered = true;
+        this.staggerVulnerableMult = 1.25;
+        this.transitionToState('P2_RING_LAND_RECOVERY', 1.45);
+      }
+    } else if (this.currentState === 'P2_RING_LAND_RECOVERY') {
+      moveVx = 0;
+      moveVy = 0;
+      this.isStaggered = true;
+      this.staggerVulnerableMult = 1.25;
+      if (this.stateTimer <= 0) {
+        this.isStaggered = false;
+        this.staggerVulnerableMult = 1.0;
+        this.transitionToState('P2_PREPARE_DASH', 0.55);
       }
     }
 
@@ -5405,17 +5262,27 @@ class HomingEnemyProjectile extends EnemyProjectile {
     ctx.rotate(angle);
 
     ctx.beginPath();
+    ctx.arc(0, 0, this.radius + 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.34)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius + 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#090d16';
+    ctx.fill();
+
+    ctx.beginPath();
     ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-    ctx.fillStyle = '#9333ea';
+    ctx.fillStyle = '#a855f7';
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#f0abfc';
+    ctx.strokeStyle = '#fae8ff';
     ctx.stroke();
 
-    // Pupila direccional del proyectil ocular
+    // Pupila direccional brillante de alto contraste
     ctx.beginPath();
-    ctx.arc(this.radius * 0.35, 0, this.radius * 0.38, 0, Math.PI * 2);
-    ctx.fillStyle = '#090d16';
+    ctx.arc(this.radius * 0.32, 0, this.radius * 0.36, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.restore();
   }
@@ -5498,39 +5365,50 @@ class StaticBarrierHazard extends Entity {
  * A los 2.0 segundos explota disparando proyectiles en 8 direcciones.
  */
 class GravityZoneHazard extends Entity {
-  constructor(x, y, radius = 86, duration = 2.0, projectileDamage = 15) {
+  constructor(x, y, radius = 86, duration = 2.4, projectileDamage = 15) {
     super(x, y, radius, '#7e22ce');
+    this.armingDuration = 0.58; // Gracia inicial para poder salir antes de ralentizar
+    this.armingTimer = this.armingDuration;
     this.timer = duration;
     this.maxDuration = duration;
     this.projectileDamage = projectileDamage;
-    this.isGravityZone = true;
+    this.isGravityZone = false;
     this.speedMultiplier = 0.5;
     this.pulsePhase = Math.random() * Math.PI * 2;
   }
 
   update(dt, player, room) {
     this.pulsePhase += dt * 7;
+    if (this.armingTimer > 0) {
+      this.armingTimer = Math.max(0, this.armingTimer - dt);
+      this.isGravityZone = this.armingTimer <= 0;
+      return;
+    }
+
+    this.isGravityZone = true;
     this.timer -= dt;
 
     if (this.timer <= 0) {
-      // A los 2 segundos explota disparando proyectiles en 8 direcciones
+      // Explota disparando proyectiles de alto contraste en 8 direcciones
       if (room) {
         const directions = 8;
         for (let i = 0; i < directions; i++) {
           const angle = (i * Math.PI * 2) / directions;
           const dx = Math.cos(angle);
           const dy = Math.sin(angle);
-          room.enemyProjectiles.push(
-            new EnemyProjectile(
-              this.x + dx * 12,
-              this.y + dy * 12,
-              dx,
-              dy,
-              295,
-              this.projectileDamage,
-              6.5
-            )
+          const orb = new EnemyProjectile(
+            this.x + dx * 12,
+            this.y + dy * 12,
+            dx,
+            dy,
+            285,
+            this.projectileDamage,
+            6.5
           );
+          orb.ringColor = '#c084fc';
+          orb.glowColor = 'rgba(192, 132, 252, 0.36)';
+          orb.coreColor = '#faf5ff';
+          room.enemyProjectiles.push(orb);
           room.spawnParticle(this.x, this.y, dx * 160, dy * 160, 4.5, '#d8b4fe', 0.45);
         }
       }
@@ -5539,8 +5417,29 @@ class GravityZoneHazard extends Entity {
   }
 
   draw(ctx) {
-    const progress = 1 - Math.max(0, this.timer / this.maxDuration);
     ctx.save();
+    if (this.armingTimer > 0) {
+      const armProg = 1 - Math.max(0, this.armingTimer / this.armingDuration);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(168, 85, 247, ${(0.08 + armProg * 0.12).toFixed(2)})`;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(216, 180, 254, 0.75)';
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * armProg, 0, Math.PI * 2);
+      ctx.strokeStyle = '#f0abfc';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    const progress = 1 - Math.max(0, this.timer / this.maxDuration);
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(126, 34, 206, ${0.18 + progress * 0.28})`;
@@ -5551,12 +5450,12 @@ class GravityZoneHazard extends Entity {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Anillo gravitacional implosivo que marca la cuenta regresiva de 2.0s
+    // Anillo gravitacional implosivo que marca la cuenta regresiva hacia la detonación
     const innerR = Math.max(6, this.radius * (1 - progress));
     ctx.beginPath();
     ctx.arc(this.x, this.y, innerR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(240, 171, 252, 0.8)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(240, 171, 252, 0.85)';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.restore();
   }
@@ -5564,19 +5463,20 @@ class GravityZoneHazard extends Entity {
 
 /**
  * Entidad `NemesisDarkClone` (Clon Oscuro - Fase 2 de `NemesisBoss`):
- * Guarda el historial de coordenadas continuas del jugador en un buffer acotado
- * a los últimos 1000ms (1.0s) y replica exactamente esa ruta con 1 segundo de retraso.
- * Si colisiona con el jugador, le inflige daño de contacto.
+ * Guarda el historial de coordenadas continuas del jugador y replica la ruta
+ * con 1.35 segundos de retraso y pausas periódicas para dar aire táctico.
  */
 class NemesisDarkClone extends Entity {
   constructor(startX, startY, bossOwner) {
     super(startX, startY, 17, '#3b0764');
     this.bossOwner = bossOwner;
-    this.history = []; // Array de muestras { x, y, time } limitado a ~1.05s
+    this.history = [];
     this.elapsedTime = 0;
-    this.delaySeconds = 1.0;
-    this.contactDamage = 20;
+    this.delaySeconds = 1.35;
+    this.contactDamage = 18;
     this.activeReplica = false;
+    this.chaseCycleTimer = 0;
+    this.isPaused = false;
   }
 
   update(dt, player, room) {
@@ -5585,26 +5485,34 @@ class NemesisDarkClone extends Entity {
       return;
     }
 
-    this.elapsedTime += dt;
-    this.history.push({
-      x: player.x,
-      y: player.y,
-      time: this.elapsedTime,
-    });
+    this.chaseCycleTimer = (this.chaseCycleTimer + dt) % 4.9;
+    this.isPaused = this.chaseCycleTimer >= 4.0;
 
-    // Consumir las muestras que ya cumplieron 1.0 segundo de antigüedad
-    const targetTime = this.elapsedTime - this.delaySeconds;
-    while (this.history.length > 1 && this.history[1].time <= targetTime) {
-      this.history.shift();
+    if (!this.isPaused) {
+      this.elapsedTime += dt;
+      this.history.push({
+        x: player.x,
+        y: player.y,
+        time: this.elapsedTime,
+      });
+
+      const targetTime = this.elapsedTime - this.delaySeconds;
+      while (this.history.length > 1 && this.history[1].time <= targetTime) {
+        this.history.shift();
+      }
+
+      if (this.elapsedTime >= this.delaySeconds && this.history.length > 0) {
+        this.activeReplica = true;
+        const sample = this.history[0];
+        this.x = sample.x;
+        this.y = sample.y;
+      }
     }
 
-    if (this.elapsedTime >= this.delaySeconds && this.history.length > 0) {
-      this.activeReplica = true;
-      const sample = this.history[0];
-      this.x = sample.x;
-      this.y = sample.y;
-
-      if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
+    if (this.activeReplica && !this.isPaused && MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
+      if (typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player)) {
+        CombatSystem.triggerPerfectDodge(player, room, this.x, this.y);
+      } else {
         player.takeDamage(this.contactDamage, room);
       }
     }
@@ -5612,7 +5520,6 @@ class NemesisDarkClone extends Entity {
 
   draw(ctx) {
     ctx.save();
-    // Estela de la ruta grabada del último segundo
     if (this.history.length > 2) {
       ctx.beginPath();
       for (let i = 0; i < this.history.length; i += 3) {
@@ -5620,24 +5527,23 @@ class NemesisDarkClone extends Entity {
         if (i === 0) ctx.moveTo(pt.x, pt.y);
         else ctx.lineTo(pt.x, pt.y);
       }
-      ctx.strokeStyle = 'rgba(168, 85, 247, 0.28)';
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    ctx.globalAlpha = this.activeReplica ? 0.88 : 0.4;
+    ctx.globalAlpha = this.isPaused ? 0.38 : (this.activeReplica ? 0.88 : 0.4);
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fillStyle = '#1e1b4b';
     ctx.fill();
     ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#e879f9';
+    ctx.strokeStyle = this.isPaused ? '#38bdf8' : '#e879f9';
     ctx.stroke();
 
-    // Ojos carmesí/vacío del Clon Oscuro
-    ctx.fillStyle = '#f43f5e';
+    ctx.fillStyle = this.isPaused ? '#38bdf8' : '#f43f5e';
     ctx.beginPath();
     ctx.arc(this.x - 5, this.y - 2, 3, 0, Math.PI * 2);
     ctx.arc(this.x + 5, this.y - 2, 3, 0, Math.PI * 2);
@@ -5648,26 +5554,12 @@ class NemesisDarkClone extends Entity {
 
 /**
  * 1. `NemesisBoss` (NÉMESIS, EL OJO DEL VACÍO - Foco: Vectores y Clones)
- * - Fase 1 (Observación):
- *    - `P1_OCULAR_JUDGMENT` (Juicio Ocular): Ráfagas de proyectiles con soft-homing.
- *    - `P1_PRISON_TELEGRAPH` (Prisión Geométrica): Selecciona 3 puntos cerca del jugador,
- *      telegrafía líneas rojas entre ellos por 1s y genera barreras de daño estáticas
- *      con hitboxes rectangulares rotadas (`StaticBarrierHazard`).
- *    - `P1_GRAVITY_RAIN` (Lluvia Invertida): Genera círculos de gravedad (`GravityZoneHazard`)
- *      que aplican un multiplicador de velocidad de 0.5 al jugador y a los 2s explotan
- *      disparando proyectiles en 8 direcciones.
- * - Fase 2 (El observador despierta - Al 50% HP):
- *    - Instancia 4 entidades "Escudo" (`orbitShields`) que orbitan permanentemente sus
- *      coordenadas `(x, y)` usando `Math.cos` y `Math.sin` con un ángulo `theta` que se
- *      incrementa mediante `deltaTime`. Estos escudos bloquean ataques.
- *    - Instancia `NemesisDarkClone` (Clon Oscuro) que guarda el historial de coordenadas
- *      del jugador y replica exactamente esa ruta con 1 segundo de retraso.
  */
 class NemesisBoss extends Boss {
   constructor(x, y, sectionNumber = 1, levelNumber = 1) {
     super(x, y, sectionNumber, levelNumber, 'NÉMESIS, EL OJO DEL VACÍO');
     this.radius = 32;
-    this.color = '#6b21a8'; // Púrpura abisal en Fase 1
+    this.color = '#6b21a8';
     this.basePhase1Speed = Math.min(200, 78 * this.ngSpeedMult);
     this.speed = this.basePhase1Speed;
     this.contactDamage = Math.round(20 * this.ngMult);
@@ -5677,10 +5569,12 @@ class NemesisBoss extends Boss {
     this.prisonPoints = [];
     this.gravitySpawnedInState = false;
 
-    // Variables de Fase 2 (4 Escudos Orbitales + Clon Oscuro)
+    // Variables de Fase 2 (4 Escudos Orbitales con respiración táctica + Clon Oscuro)
     this.orbitTheta = 0;
-    this.orbitAngularSpeed = 2.45; // rad/s incrementado con deltaTime
+    this.orbitAngularSpeed = 2.4;
     this.orbitRadius = 72;
+    this.orbitCycleTimer = 0;
+    this.orbitExpanded = false;
     this.orbitShields = [];
     this.darkCloneSpawned = false;
 
@@ -5689,10 +5583,12 @@ class NemesisBoss extends Boss {
 
   onPhaseChange() {
     super.onPhaseChange();
-    this.color = '#a21caf'; // Magenta cósmico despierto en Fase 2
+    this.color = '#a21caf';
     this.speed = this.basePhase1Speed * 1.35;
+    this.orbitCycleTimer = 0;
+    this.orbitExpanded = false;
+    this.orbitRadius = 72;
 
-    // Instanciar 4 entidades Escudo que orbitan permanentemente (x, y)
     this.orbitShields = [];
     for (let i = 0; i < 4; i++) {
       const angle = this.orbitTheta + (i * Math.PI * 2) / 4;
@@ -5711,6 +5607,14 @@ class NemesisBoss extends Boss {
   updateOrbitShields(dt, player, room) {
     if (this.orbitShields.length === 0) return;
 
+    // Respiración de Escudos: 3.5s cerrados (72px) -> 2.2s abiertos (142px) para permitir ataques melee
+    this.orbitCycleTimer = (this.orbitCycleTimer + dt) % 5.7;
+    this.orbitExpanded = this.orbitCycleTimer >= 3.5;
+    const targetRadius = this.orbitExpanded ? 142 : 72;
+    const targetSpeed = this.orbitExpanded ? 1.25 : 2.4;
+    this.orbitRadius += (targetRadius - this.orbitRadius) * Math.min(1, dt * 6);
+    this.orbitAngularSpeed += (targetSpeed - this.orbitAngularSpeed) * Math.min(1, dt * 6);
+
     this.orbitTheta = (this.orbitTheta + this.orbitAngularSpeed * dt) % (Math.PI * 2);
     for (let i = 0; i < this.orbitShields.length; i++) {
       const shield = this.orbitShields[i];
@@ -5722,7 +5626,6 @@ class NemesisBoss extends Boss {
         shield.flashTimer = Math.max(0, shield.flashTimer - dt);
       }
 
-      // También intercepta proyectiles del jugador que entren en su radio
       if (room && room.projectiles) {
         for (const proj of room.projectiles) {
           if (proj.markedForDeletion) continue;
@@ -5738,15 +5641,19 @@ class NemesisBoss extends Boss {
         player &&
         MathUtils.circleCollision(shield.x, shield.y, shield.radius, player.x, player.y, player.radius)
       ) {
-        player.takeDamage(16, room);
+        if (typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player)) {
+          CombatSystem.triggerPerfectDodge(player, room, shield.x, shield.y);
+        } else {
+          player.takeDamage(16, room);
+        }
       }
     }
   }
 
   selectGeometricPrisonPoints(player) {
-    const radius = 135;
+    const radius = 152;
     const baseAngle = Math.random() * Math.PI * 2;
-    const pad = 34;
+    const pad = 38;
     this.prisonPoints = [];
     for (let i = 0; i < 3; i++) {
       const a = baseAngle + (i * Math.PI * 2) / 3;
@@ -5777,7 +5684,7 @@ class NemesisBoss extends Boss {
         zx = ROOM_BOUNDS.left + pad + Math.random() * (ROOM_BOUNDS.right - ROOM_BOUNDS.left - pad * 2);
         zy = ROOM_BOUNDS.top + pad + Math.random() * (ROOM_BOUNDS.bottom - ROOM_BOUNDS.top - pad * 2);
       }
-      room.hazards.push(new GravityZoneHazard(zx, zy, 86, 2.0, 15));
+      room.hazards.push(new GravityZoneHazard(zx, zy, 86, 2.15, 15));
     }
   }
 
@@ -5787,7 +5694,6 @@ class NemesisBoss extends Boss {
       this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
     }
 
-    // En Fase 2 actualizamos los 4 escudos orbitales y aseguramos la existencia del Clon Oscuro
     if (this.phase === 2) {
       this.updateOrbitShields(dt, targetEntity, room);
       if (!this.darkCloneSpawned && room && targetEntity) {
@@ -5807,7 +5713,6 @@ class NemesisBoss extends Boss {
       this.currentState === 'P1_OCULAR_JUDGMENT' ||
       this.currentState === 'P2_OCULAR_JUDGMENT'
     ) {
-      // Mantiene distancia táctica mientras dispara ráfagas con soft-homing
       const idealDist = 240;
       if (toPlayer.length > idealDist + 35) {
         moveVx = toPlayer.x * this.speed;
@@ -5822,7 +5727,7 @@ class NemesisBoss extends Boss {
 
       this.ocularBurstTimer -= dt;
       if (this.ocularBurstTimer <= 0 && room) {
-        this.ocularBurstTimer = isP2 ? 0.72 : 0.95;
+        this.ocularBurstTimer = isP2 ? 0.78 : 0.98;
         const orbCount = isP2 ? 4 : 3;
         const spread = 0.28;
         for (let i = 0; i < orbCount; i++) {
@@ -5835,10 +5740,10 @@ class NemesisBoss extends Boss {
               this.y + dy * (this.radius + 10),
               dx,
               dy,
-              isP2 ? 285 : 255,
+              isP2 ? 275 : 250,
               15,
               7,
-              isP2 ? 1.95 : 1.65
+              isP2 ? 1.8 : 1.55
             )
           );
         }
@@ -5846,15 +5751,16 @@ class NemesisBoss extends Boss {
 
       if (this.stateTimer <= 0) {
         this.selectGeometricPrisonPoints(targetEntity);
-        this.transitionToState(isP2 ? 'P2_PRISON_TELEGRAPH' : 'P1_PRISON_TELEGRAPH', 1.0);
+        this.transitionToState(isP2 ? 'P2_PRISON_TELEGRAPH' : 'P1_PRISON_TELEGRAPH', 1.05);
       }
     } else if (
       this.currentState === 'P1_PRISON_TELEGRAPH' ||
       this.currentState === 'P2_PRISON_TELEGRAPH'
     ) {
-      // Telegrafía durante 1 segundo las 3 líneas rojas entre los 3 puntos seleccionados
       moveVx = 0;
       moveVy = 0;
+      const progress = 1 - Math.max(0, this.stateTimer / 1.05);
+      this.setWindup(true, progress, '#e879f9');
       this.telegraphs = [];
       for (let i = 0; i < this.prisonPoints.length; i++) {
         const pA = this.prisonPoints[i];
@@ -5866,10 +5772,13 @@ class NemesisBoss extends Boss {
           x2: pB.x,
           y2: pB.y,
           width: 18,
+          active: true,
+          arrow: false,
         });
       }
 
       if (this.stateTimer <= 0) {
+        this.setWindup(false, 0);
         this.telegraphs = [];
         if (room) {
           for (let i = 0; i < this.prisonPoints.length; i++) {
@@ -5879,7 +5788,7 @@ class NemesisBoss extends Boss {
           }
         }
         this.gravitySpawnedInState = false;
-        this.transitionToState(isP2 ? 'P2_GRAVITY_RAIN' : 'P1_GRAVITY_RAIN', 2.3);
+        this.transitionToState(isP2 ? 'P2_GRAVITY_RAIN' : 'P1_GRAVITY_RAIN', 2.4);
       }
     } else if (
       this.currentState === 'P1_GRAVITY_RAIN' ||
@@ -5894,7 +5803,22 @@ class NemesisBoss extends Boss {
       }
 
       if (this.stateTimer <= 0) {
-        this.ocularBurstTimer = 0.4;
+        this.isStaggered = true;
+        this.staggerVulnerableMult = 1.25;
+        this.transitionToState(isP2 ? 'P2_OCULAR_RECOVERY' : 'P1_OCULAR_RECOVERY', 1.25);
+      }
+    } else if (
+      this.currentState === 'P1_OCULAR_RECOVERY' ||
+      this.currentState === 'P2_OCULAR_RECOVERY'
+    ) {
+      moveVx = 0;
+      moveVy = 0;
+      this.isStaggered = true;
+      this.staggerVulnerableMult = 1.25;
+      if (this.stateTimer <= 0) {
+        this.isStaggered = false;
+        this.staggerVulnerableMult = 1.0;
+        this.ocularBurstTimer = 0.45;
         this.transitionToState(
           isP2 ? 'P2_OCULAR_JUDGMENT' : 'P1_OCULAR_JUDGMENT',
           isP2 ? 2.9 : 3.4
@@ -6067,32 +5991,32 @@ class AbismoBoss extends Boss {
     super(x, y, sectionNumber, levelNumber, 'ABISMO, EL DEVORAMUNDOS');
     this.radius = 35;
     this.color = '#854d0e'; // Quitina subterránea en Fase 1
-    this.basePhase1Speed = Math.min(220, 90 * this.ngSpeedMult);
+    this.basePhase1Speed = Math.min(210, 88 * this.ngSpeedMult);
     this.speed = this.basePhase1Speed;
-    this.burrowSpeed = Math.min(320, 250 * this.ngSpeedMult);
+    this.burrowSpeed = Math.min(290, 235 * this.ngSpeedMult);
     this.contactDamage = Math.round(24 * this.ngMult);
 
     this.isBurrowed = true;
     this.dirtTrailTimer = 0;
-    this.emergeRadius = 140;
-    this.suctionForce = 180;
+    this.emergeRadius = 124;
+    this.suctionForce = 130;
     this.biteVisualTimer = 0;
 
     // Variables de Fase 2
-    this.wormSpawnTimer = 3.8;
+    this.wormSpawnTimer = 4.0;
     this.ambushCounter = 0;
     this.ambushTarget = { x: ROOM_BOUNDS.centerX, y: ROOM_BOUNDS.centerY };
 
-    this.transitionToState('P1_BURROW_CHASE', 3.0);
+    this.transitionToState('P1_BURROW_CHASE', 2.6);
   }
 
   onPhaseChange() {
     super.onPhaseChange();
     this.color = '#9f1239'; // Carmesí abisal en Fase 2
-    this.burrowSpeed = 315;
+    this.burrowSpeed = Math.min(310, 275 * this.ngSpeedMult);
     this.ambushCounter = 0;
     this.isBurrowed = true;
-    this.transitionToState('P2_AMBUSH_BURROW', 0.65);
+    this.transitionToState('P2_AMBUSH_BURROW', 0.72);
   }
 
   spawnPermanentCrackedFloor(room) {
@@ -6104,15 +6028,19 @@ class AbismoBoss extends Boss {
     if (currentPermanent.length >= 10) {
       currentPermanent[0].markedForDeletion = true;
     }
-    room.hazards.push(new PermanentCrackedGroundHazard(this.x, this.y, 48, 16));
+    room.hazards.push(new PermanentCrackedGroundHazard(this.x, this.y, 46, 16));
     if (this.phase === 2 && typeof AbyssalGeyserHazard !== 'undefined') {
-      room.hazards.push(new AbyssalGeyserHazard(this.x, this.y, 55, 0.9, 1.4, 20));
+      room.hazards.push(new AbyssalGeyserHazard(this.x, this.y, 52, 1.05, 1.35, 20));
     }
   }
 
   executeEmergeExplosion(targetEntity, room) {
     this.isBurrowed = false;
     this.telegraphs = [];
+    this.setWindup(false, 0);
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('boss_slam', { volume: 0.55 });
+    }
 
     if (
       targetEntity &&
@@ -6125,21 +6053,42 @@ class AbismoBoss extends Boss {
         targetEntity.radius
       )
     ) {
-      targetEntity.takeDamage(36, room);
+      targetEntity.takeDamage(34, room);
       const push = MathUtils.normalize(targetEntity.x - this.x, targetEntity.y - this.y);
       targetEntity.x = MathUtils.clamp(
-        targetEntity.x + push.x * 65,
+        targetEntity.x + push.x * 60,
         ROOM_BOUNDS.left + targetEntity.radius,
         ROOM_BOUNDS.right - targetEntity.radius
       );
       targetEntity.y = MathUtils.clamp(
-        targetEntity.y + push.y * 65,
+        targetEntity.y + push.y * 60,
         ROOM_BOUNDS.top + targetEntity.radius,
         ROOM_BOUNDS.bottom - targetEntity.radius
       );
     }
 
     if (room) {
+      // Anillo de 6 rocas proyectiles de alto contraste al emerger
+      const rockCount = 6;
+      for (let i = 0; i < rockCount; i++) {
+        const ang = (i * Math.PI * 2) / rockCount + 0.25;
+        const dx = Math.cos(ang);
+        const dy = Math.sin(ang);
+        const rock = new EnemyProjectile(
+          this.x + dx * (this.radius + 8),
+          this.y + dy * (this.radius + 8),
+          dx,
+          dy,
+          225,
+          14,
+          6.5
+        );
+        rock.ringColor = '#d97706';
+        rock.glowColor = 'rgba(217, 119, 6, 0.34)';
+        rock.coreColor = '#fef3c7';
+        room.enemyProjectiles.push(rock);
+      }
+
       for (let i = 0; i < 20; i++) {
         const ang = (i * Math.PI * 2) / 20;
         room.spawnParticle(
@@ -6164,7 +6113,6 @@ class AbismoBoss extends Boss {
       this.biteVisualTimer = Math.max(0, this.biteVisualTimer - dt);
     }
 
-    // Estela continua de partículas de tierra mientras viaja enterrado (`isBurrowed === true`)
     if (this.isBurrowed && room) {
       this.dirtTrailTimer -= dt;
       if (this.dirtTrailTimer <= 0) {
@@ -6183,11 +6131,10 @@ class AbismoBoss extends Boss {
       }
     }
 
-    // En Fase 2: Instanciar `WormEnemy` periódicamente
     if (this.phase === 2 && room) {
       this.wormSpawnTimer -= dt;
       if (this.wormSpawnTimer <= 0) {
-        this.wormSpawnTimer = 5.2;
+        this.wormSpawnTimer = 5.4;
         const activeWorms = room.enemies.filter(
           (e) => e instanceof WormEnemy && !e.markedForDeletion
         ).length;
@@ -6213,7 +6160,7 @@ class AbismoBoss extends Boss {
     let moveVy = 0;
 
     // ========================================================================
-    // FASE 1: RASTRO DE MUERTE (3s ENTERRADO) + MANDÍBULAS (SUCCIÓN 2s + MORDIDA)
+    // FASE 1: RASTRO DE MUERTE + EMERGENCIA SÍSMICA + SUCCIÓN Y MORDIDA + PAUSA
     // ========================================================================
     if (this.phase === 1) {
       if (this.currentState === 'P1_BURROW_CHASE') {
@@ -6223,13 +6170,14 @@ class AbismoBoss extends Boss {
         moveVy = toPlayer.y * this.burrowSpeed;
 
         if (this.stateTimer <= 0) {
-          this.transitionToState('P1_EMERGE_TELEGRAPH', 0.85);
+          this.transitionToState('P1_EMERGE_TELEGRAPH', 0.95);
         }
       } else if (this.currentState === 'P1_EMERGE_TELEGRAPH') {
         this.isBurrowed = true;
         moveVx = 0;
         moveVy = 0;
-        const progress = 1 - Math.max(0, this.stateTimer / 0.85);
+        const progress = 1 - Math.max(0, this.stateTimer / 0.95);
+        this.setWindup(true, progress, '#f59e0b');
         this.telegraphs = [
           {
             type: 'CIRCLE',
@@ -6242,30 +6190,34 @@ class AbismoBoss extends Boss {
 
         if (this.stateTimer <= 0) {
           this.executeEmergeExplosion(targetEntity, room);
-          this.transitionToState('P1_JAWS_SUCTION', 2.0);
+          this.transitionToState('P1_JAWS_SUCTION', 1.9);
         }
       } else if (this.currentState === 'P1_JAWS_SUCTION') {
-        // Mandíbulas: Inmóvil, aplica vector de atracción constante al jugador durante 2 segundos
         this.isBurrowed = false;
         moveVx = 0;
         moveVy = 0;
         this.facingAngle = Math.atan2(toPlayer.y, toPlayer.x);
 
-        const pullDir = MathUtils.normalize(this.x - targetEntity.x, this.y - targetEntity.y);
-        targetEntity.x = MathUtils.clamp(
-          targetEntity.x + pullDir.x * this.suctionForce * dt,
-          ROOM_BOUNDS.left + targetEntity.radius,
-          ROOM_BOUNDS.right - targetEntity.radius
-        );
-        targetEntity.y = MathUtils.clamp(
-          targetEntity.y + pullDir.y * this.suctionForce * dt,
-          ROOM_BOUNDS.top + targetEntity.radius,
-          ROOM_BOUNDS.bottom - targetEntity.radius
-        );
+        // El Dash rompe la fuerza de succión
+        const playerIsDashing = typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(targetEntity);
+        if (!playerIsDashing) {
+          const pullDir = MathUtils.normalize(this.x - targetEntity.x, this.y - targetEntity.y);
+          targetEntity.x = MathUtils.clamp(
+            targetEntity.x + pullDir.x * this.suctionForce * dt,
+            ROOM_BOUNDS.left + targetEntity.radius,
+            ROOM_BOUNDS.right - targetEntity.radius
+          );
+          targetEntity.y = MathUtils.clamp(
+            targetEntity.y + pullDir.y * this.suctionForce * dt,
+            ROOM_BOUNDS.top + targetEntity.radius,
+            ROOM_BOUNDS.bottom - targetEntity.radius
+          );
+        }
 
         const biteX = this.x + Math.cos(this.facingAngle) * 58;
         const biteY = this.y + Math.sin(this.facingAngle) * 58;
-        const progress = 1 - Math.max(0, this.stateTimer / 2.0);
+        const progress = 1 - Math.max(0, this.stateTimer / 1.9);
+        this.setWindup(true, progress * 0.85, '#f59e0b');
         this.telegraphs = [
           {
             type: 'CIRCLE',
@@ -6277,6 +6229,7 @@ class AbismoBoss extends Boss {
         ];
 
         if (this.stateTimer <= 0) {
+          this.setWindup(false, 0);
           this.telegraphs = [];
           this.biteVisualTimer = 0.35;
           if (
@@ -6289,55 +6242,61 @@ class AbismoBoss extends Boss {
               targetEntity.radius
             )
           ) {
-            targetEntity.takeDamage(34, room);
+            targetEntity.takeDamage(32, room);
           }
-          this.transitionToState('P1_BITE_RECOVERY', 0.55);
+          this.isStaggered = true;
+          this.staggerVulnerableMult = 1.25;
+          this.transitionToState('P1_BITE_RECOVERY', 1.25);
         }
       } else if (this.currentState === 'P1_BITE_RECOVERY') {
         this.isBurrowed = false;
+        this.isStaggered = true;
+        this.staggerVulnerableMult = 1.25;
         moveVx = 0;
         moveVy = 0;
         if (this.stateTimer <= 0) {
+          this.isStaggered = false;
+          this.staggerVulnerableMult = 1.0;
           this.isBurrowed = true;
-          this.transitionToState('P1_BURROW_CHASE', 3.0);
+          this.transitionToState('P1_BURROW_CHASE', 2.6);
         }
       }
       return { moveVx, moveVy };
     }
 
     // ========================================================================
-    // FASE 2: EMBOSCADA TRIPLE PREDICTIVA + SUELO AGRIETADO PERMANENTE + MINIONS
+    // FASE 2: EMBOSCADA TRIPLE JUSTA + FATIGA EN SUPERFICIE + SUCCIÓN
     // ========================================================================
     if (this.currentState === 'P2_AMBUSH_BURROW') {
       this.isBurrowed = true;
-      // Posición predictiva del jugador basada en su vector de velocidad actual
-      const leadTime = 0.42;
+      const leadTime = 0.28;
       const predX = MathUtils.clamp(
         targetEntity.x + targetEntity.vx * leadTime,
-        ROOM_BOUNDS.left + 55,
-        ROOM_BOUNDS.right - 55
+        ROOM_BOUNDS.left + 60,
+        ROOM_BOUNDS.right - 60
       );
       const predY = MathUtils.clamp(
         targetEntity.y + targetEntity.vy * leadTime,
-        ROOM_BOUNDS.top + 55,
-        ROOM_BOUNDS.bottom - 55
+        ROOM_BOUNDS.top + 60,
+        ROOM_BOUNDS.bottom - 60
       );
       this.ambushTarget = { x: predX, y: predY };
 
       const toPred = MathUtils.normalize(predX - this.x, predY - this.y);
-      moveVx = toPred.x * (this.burrowSpeed * 1.45);
-      moveVy = toPred.y * (this.burrowSpeed * 1.45);
+      moveVx = toPred.x * (this.burrowSpeed * 1.4);
+      moveVy = toPred.y * (this.burrowSpeed * 1.4);
 
-      if (this.stateTimer <= 0 || Math.hypot(predX - this.x, predY - this.y) <= 24) {
+      if (this.stateTimer <= 0 || Math.hypot(predX - this.x, predY - this.y) <= 26) {
         this.x = predX;
         this.y = predY;
-        this.transitionToState('P2_AMBUSH_TELEGRAPH', 0.62);
+        this.transitionToState('P2_AMBUSH_TELEGRAPH', 0.82);
       }
     } else if (this.currentState === 'P2_AMBUSH_TELEGRAPH') {
       this.isBurrowed = true;
       moveVx = 0;
       moveVy = 0;
-      const progress = 1 - Math.max(0, this.stateTimer / 0.62);
+      const progress = 1 - Math.max(0, this.stateTimer / 0.82);
+      this.setWindup(true, progress, '#f59e0b');
       this.telegraphs = [
         {
           type: 'CIRCLE',
@@ -6351,7 +6310,7 @@ class AbismoBoss extends Boss {
       if (this.stateTimer <= 0) {
         this.executeEmergeExplosion(targetEntity, room);
         this.ambushCounter += 1;
-        this.transitionToState('P2_AMBUSH_SURFACE_PAUSE', 0.48);
+        this.transitionToState('P2_AMBUSH_SURFACE_PAUSE', 0.45);
       }
     } else if (this.currentState === 'P2_AMBUSH_SURFACE_PAUSE') {
       this.isBurrowed = false;
@@ -6360,11 +6319,24 @@ class AbismoBoss extends Boss {
       if (this.stateTimer <= 0) {
         if (this.ambushCounter < 3) {
           this.isBurrowed = true;
-          this.transitionToState('P2_AMBUSH_BURROW', 0.65);
+          this.transitionToState('P2_AMBUSH_BURROW', 0.72);
         } else {
           this.ambushCounter = 0;
-          this.transitionToState('P2_JAWS_SUCTION', 1.8);
+          this.isStaggered = true;
+          this.staggerVulnerableMult = 1.25;
+          this.transitionToState('P2_EXHAUSTED_SURFACE', 1.55);
         }
+      }
+    } else if (this.currentState === 'P2_EXHAUSTED_SURFACE') {
+      this.isBurrowed = false;
+      this.isStaggered = true;
+      this.staggerVulnerableMult = 1.25;
+      moveVx = 0;
+      moveVy = 0;
+      if (this.stateTimer <= 0) {
+        this.isStaggered = false;
+        this.staggerVulnerableMult = 1.0;
+        this.transitionToState('P2_JAWS_SUCTION', 1.8);
       }
     } else if (this.currentState === 'P2_JAWS_SUCTION') {
       this.isBurrowed = false;
@@ -6372,48 +6344,53 @@ class AbismoBoss extends Boss {
       moveVy = 0;
       this.facingAngle = Math.atan2(toPlayer.y, toPlayer.x);
 
-      const pullDir = MathUtils.normalize(this.x - targetEntity.x, this.y - targetEntity.y);
-      targetEntity.x = MathUtils.clamp(
-        targetEntity.x + pullDir.x * (this.suctionForce * 1.2) * dt,
-        ROOM_BOUNDS.left + targetEntity.radius,
-        ROOM_BOUNDS.right - targetEntity.radius
-      );
-      targetEntity.y = MathUtils.clamp(
-        targetEntity.y + pullDir.y * (this.suctionForce * 1.2) * dt,
-        ROOM_BOUNDS.top + targetEntity.radius,
-        ROOM_BOUNDS.bottom - targetEntity.radius
-      );
+      const playerIsDashing = typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(targetEntity);
+      if (!playerIsDashing) {
+        const pullDir = MathUtils.normalize(this.x - targetEntity.x, this.y - targetEntity.y);
+        targetEntity.x = MathUtils.clamp(
+          targetEntity.x + pullDir.x * (this.suctionForce * 1.18) * dt,
+          ROOM_BOUNDS.left + targetEntity.radius,
+          ROOM_BOUNDS.right - targetEntity.radius
+        );
+        targetEntity.y = MathUtils.clamp(
+          targetEntity.y + pullDir.y * (this.suctionForce * 1.18) * dt,
+          ROOM_BOUNDS.top + targetEntity.radius,
+          ROOM_BOUNDS.bottom - targetEntity.radius
+        );
+      }
 
       const biteX = this.x + Math.cos(this.facingAngle) * 58;
       const biteY = this.y + Math.sin(this.facingAngle) * 58;
       const progress = 1 - Math.max(0, this.stateTimer / 1.8);
+      this.setWindup(true, progress * 0.85, '#f59e0b');
       this.telegraphs = [
         {
           type: 'CIRCLE',
           x: biteX,
           y: biteY,
-          radius: 72,
+          radius: 70,
           progress,
         },
       ];
 
       if (this.stateTimer <= 0) {
+        this.setWindup(false, 0);
         this.telegraphs = [];
         this.biteVisualTimer = 0.35;
         if (
           MathUtils.circleCollision(
             biteX,
             biteY,
-            72,
+            70,
             targetEntity.x,
             targetEntity.y,
             targetEntity.radius
           )
         ) {
-          targetEntity.takeDamage(36, room);
+          targetEntity.takeDamage(34, room);
         }
         this.isBurrowed = true;
-        this.transitionToState('P2_AMBUSH_BURROW', 0.7);
+        this.transitionToState('P2_AMBUSH_BURROW', 0.72);
       }
     }
 
@@ -6465,13 +6442,14 @@ class AbismoBoss extends Boss {
  * y se dispara simultáneamente junto con las demás espadas.
  */
 class SuspendedSwordProjectile extends EnemyProjectile {
-  constructor(x, y, suspendDuration = 1.5, launchSpeed = 650, damage = 20) {
+  constructor(x, y, suspendDuration = 1.35, launchSpeed = 580, damage = 18) {
     super(x, y, 0, 0, 0, damage, 8);
     this.suspendTimer = suspendDuration;
+    this.maxSuspendDuration = suspendDuration;
     this.launchSpeed = launchSpeed;
     this.launched = false;
     this.aimAngle = 0;
-    this.lifeTime = 4.0;
+    this.lifeTime = 4.5;
   }
 
   update(dt, player, room) {
@@ -6486,6 +6464,9 @@ class SuspendedSwordProjectile extends EnemyProjectile {
         this.aimAngle = Math.atan2(norm.y, norm.x);
         this.vx = norm.x * this.launchSpeed;
         this.vy = norm.y * this.launchSpeed;
+        if (typeof soundManager !== 'undefined' && soundManager) {
+          soundManager.playProcedural('boss_flash', { volume: 0.25 });
+        }
       }
       return;
     }
@@ -6495,12 +6476,12 @@ class SuspendedSwordProjectile extends EnemyProjectile {
   draw(ctx) {
     ctx.save();
     if (!this.launched) {
-      // Línea guía dorada de puntería antes del disparo simultáneo
+      const urg = 1 - Math.max(0, this.suspendTimer / Math.max(0.2, this.maxSuspendDuration));
       ctx.beginPath();
       ctx.moveTo(this.x, this.y);
       ctx.lineTo(this.x + Math.cos(this.aimAngle) * 750, this.y + Math.sin(this.aimAngle) * 750);
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.28)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = urg > 0.8 ? 'rgba(255, 255, 255, 0.55)' : 'rgba(250, 204, 21, 0.32)';
+      ctx.lineWidth = urg > 0.8 ? 2.5 : 1.5;
       ctx.setLineDash([6, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -6509,7 +6490,16 @@ class SuspendedSwordProjectile extends EnemyProjectile {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.aimAngle);
 
-    // Geometría de Espada Celestial
+    // Aura oscura + Geometría de Espada Celestial de alto contraste
+    ctx.beginPath();
+    ctx.moveTo(19, 0);
+    ctx.lineTo(-12, -8);
+    ctx.lineTo(-7, 0);
+    ctx.lineTo(-12, 8);
+    ctx.closePath();
+    ctx.fillStyle = '#090d16';
+    ctx.fill();
+
     ctx.beginPath();
     ctx.moveTo(16, 0);
     ctx.lineTo(-10, -6);
@@ -6519,91 +6509,75 @@ class SuspendedSwordProjectile extends EnemyProjectile {
     ctx.fillStyle = '#fef08a';
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#eab308';
+    ctx.strokeStyle = '#f59e0b';
     ctx.stroke();
     ctx.restore();
   }
 }
 
 /**
- * 3. `SerafinBoss` (SERAFÍN, EL ÁNGEL DE LA RUINA - Foco: Contraataques y Combos)
- * - Fase 1 (Danza Celestial):
- *    - `P1_SPEAR_TELEGRAPH` -> `P1_SPEAR_DASH` (Lanza del Juicio): Se teletransporta,
- *      telegrafía una línea recta delgada hacia la posición del jugador por 0.5s y
- *      ejecuta un dash casi instantáneo cruzando esa línea.
- *    - `P1_SACRILEGE_SPIRAL` (Plumas Sacrílegas): Dispara un patrón "Bullet Hell" de
- *      proyectiles en espiral desde su centro.
- *    - `P1_COUNTER_GUARD` (Contraataque): Entra en estado `guard` (`isGuarding = true`)
- *      por 1.5 segundos. Si un proyectil del jugador colisiona con su hitbox durante este
- *      estado, el daño se anula y Serafín instancia inmediatamente un proyectil ultrarrápido
- *      dirigido de vuelta al jugador.
- * - Fase 2 (El cielo se quiebra - Al 50% HP):
- *    - Aumenta su velocidad de movimiento y reduce sus cooldowns a la mitad (velocidad x2).
- *    - `P2_TRIANGLE_TELEGRAPH` -> `P2_TRIANGLE_DASH` (Combo de Estocadas): Realiza 3 dashes
- *      consecutivos en forma triangular telegrafiados muy rápidamente.
- *    - `P2_SUSPENDED_SWORDS` (Espadas Suspendidas): Instancia 6 proyectiles estáticos alrededor
- *      del mapa. Tras 1.5s, los vectores de velocidad de todos apuntan a la coordenada exacta
- *      del jugador en ese frame y se disparan simultáneamente.
+ * 3. `SerafinBoss` (SERAFÍN, EL ÁNGEL DE LA RUINA - Foco: Contraataques y Combos Legibles)
  */
 class SerafinBoss extends Boss {
   constructor(x, y, sectionNumber = 1, levelNumber = 1) {
     super(x, y, sectionNumber, levelNumber, 'SERAFÍN, EL ÁNGEL DE LA RUINA');
     this.radius = 30;
     this.color = '#eab308'; // Oro celestial en Fase 1
-    this.basePhase1Speed = Math.min(230, 95 * this.ngSpeedMult);
+    this.basePhase1Speed = Math.min(220, 92 * this.ngSpeedMult);
     this.speed = this.basePhase1Speed;
     this.contactDamage = Math.round(22 * this.ngMult);
 
     this.isGuarding = false;
+    this.counterGuardCooldown = 0;
+    this.teleportTarget = null;
     this.spearDir = { x: 1, y: 0 };
-    this.spearSpeed = 1320;
+    this.spearSpeed = 1120;
     this.spearHasHit = false;
 
     this.spiralAngle = 0;
     this.spiralTimer = 0;
 
-    // Variables de Fase 2 (Combo Triangular de 3 estocadas + 6 Espadas Suspendidas)
+    // Variables de Fase 2 (Combo Triangular legible + Ventana de Castigo + 6 Espadas Escalonadas)
     this.triangleVertices = [];
     this.triangleStep = 0;
     this.swordsSpawnedInState = false;
 
-    this.transitionToState('P1_SPEAR_PREP', 0.35);
+    this.transitionToState('P1_SPEAR_PREP', 0.55);
   }
 
   onPhaseChange() {
     super.onPhaseChange();
-    this.color = '#f43f5e'; // Oro quebrado / Carmesí seráfico en Fase 2
-    this.speed = this.basePhase1Speed * 2.0; // Duplica su velocidad de movimiento
+    this.color = '#f43f5e';
+    this.speed = this.basePhase1Speed * 1.85;
     this.isGuarding = false;
+    this.teleportTarget = null;
     this.setupTriangleComboVertices();
     if (typeof CelestialJudgmentPillar !== 'undefined') {
       const room = window.activeGameInstance ? window.activeGameInstance.currentRoom : null;
       const player = window.activeGameInstance ? window.activeGameInstance.player : null;
       if (room && player) {
-        room.hazards.push(new CelestialJudgmentPillar(player.x, ROOM_BOUNDS.centerY, 60, 550, 0.85, 24));
+        room.hazards.push(new CelestialJudgmentPillar(player.x, ROOM_BOUNDS.centerY, 64, 550, 0.95, 22));
       }
     }
-    this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.28);
+    this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.65);
   }
 
-  /**
-   * Llamado cuando un proyectil o ataque del jugador impacta a Serafín mientras
-   * se encuentra en estado `guard` (`this.isGuarding === true`).
-   * Anula el daño recibido e instancia inmediatamente un proyectil ultrarrápido
-   * dirigido de vuelta a las coordenadas del jugador.
-   */
   onGuardedHit(sourceEntity, room, player) {
-    if (!room || !player) return;
+    if (!room || !player || this.counterGuardCooldown > 0) return;
+    this.counterGuardCooldown = 0.35;
     const norm = MathUtils.normalize(player.x - this.x, player.y - this.y);
     const counterProj = new EnemyProjectile(
       this.x + norm.x * (this.radius + 10),
       this.y + norm.y * (this.radius + 10),
       norm.x,
       norm.y,
-      740,
-      24,
+      580,
+      22,
       8
     );
+    counterProj.ringColor = '#fde047';
+    counterProj.glowColor = 'rgba(250, 204, 21, 0.42)';
+    counterProj.coreColor = '#ffffff';
     room.enemyProjectiles.push(counterProj);
 
     for (let i = 0; i < 8; i++) {
@@ -6620,26 +6594,35 @@ class SerafinBoss extends Boss {
     }
   }
 
-  teleportAroundPlayer(player, room) {
-    const pad = 65;
+  chooseTeleportTarget(player) {
+    const pad = 68;
     const angle = Math.random() * Math.PI * 2;
-    const dist = 230;
+    const dist = 235;
+    this.teleportTarget = {
+      x: MathUtils.clamp(player.x + Math.cos(angle) * dist, ROOM_BOUNDS.left + pad, ROOM_BOUNDS.right - pad),
+      y: MathUtils.clamp(player.y + Math.sin(angle) * dist, ROOM_BOUNDS.top + pad, ROOM_BOUNDS.bottom - pad),
+    };
+  }
+
+  teleportAroundPlayer(player, room) {
+    if (!this.teleportTarget) {
+      this.chooseTeleportTarget(player);
+    }
     if (room) {
       for (let i = 0; i < 10; i++) {
         const a = (i * Math.PI * 2) / 10;
         room.spawnParticle(this.x, this.y, Math.cos(a) * 120, Math.sin(a) * 120, 4, '#fef08a', 0.35);
       }
     }
-    this.x = MathUtils.clamp(
-      player.x + Math.cos(angle) * dist,
-      ROOM_BOUNDS.left + pad,
-      ROOM_BOUNDS.right - pad
-    );
-    this.y = MathUtils.clamp(
-      player.y + Math.sin(angle) * dist,
-      ROOM_BOUNDS.top + pad,
-      ROOM_BOUNDS.bottom - pad
-    );
+    this.x = this.teleportTarget.x;
+    this.y = this.teleportTarget.y;
+    this.teleportTarget = null;
+    if (room) {
+      for (let i = 0; i < 10; i++) {
+        const a = (i * Math.PI * 2) / 10;
+        room.spawnParticle(this.x, this.y, Math.cos(a) * 120, Math.sin(a) * 120, 4, '#38bdf8', 0.35);
+      }
+    }
     const norm = MathUtils.normalize(player.x - this.x, player.y - this.y);
     this.spearDir = norm.length > 0 ? { x: norm.x, y: norm.y } : { x: 1, y: 0 };
     this.facingAngle = Math.atan2(this.spearDir.y, this.spearDir.x);
@@ -6649,7 +6632,7 @@ class SerafinBoss extends Boss {
     const cx = targetEntity ? targetEntity.x : ROOM_BOUNDS.centerX;
     const cy = targetEntity ? targetEntity.y : ROOM_BOUNDS.centerY;
     const r = 195;
-    const pad = 56;
+    const pad = 58;
     const baseA = Math.random() * Math.PI * 2;
     this.triangleVertices = [];
     for (let i = 0; i < 3; i++) {
@@ -6675,47 +6658,75 @@ class SerafinBoss extends Boss {
       { x: ROOM_BOUNDS.centerX, y: ROOM_BOUNDS.bottom - pad },
       { x: ROOM_BOUNDS.right - pad, y: ROOM_BOUNDS.bottom - pad },
     ];
-    for (const pos of positions) {
-      room.enemyProjectiles.push(new SuspendedSwordProjectile(pos.x, pos.y, 1.5, 660, 20));
-    }
+    positions.forEach((pos, idx) => {
+      // Disparo escalonado rítmico: 1.05s, 1.19s, 1.33s... hasta 1.75s
+      room.enemyProjectiles.push(new SuspendedSwordProjectile(pos.x, pos.y, 1.05 + idx * 0.14, 580, 18));
+    });
   }
 
   computeAIMovement(dt, targetEntity, miracleEffect, room) {
     this.stateTimer -= dt;
+    if (this.counterGuardCooldown > 0) {
+      this.counterGuardCooldown = Math.max(0, this.counterGuardCooldown - dt);
+    }
     let moveVx = 0;
     let moveVy = 0;
 
     // ========================================================================
-    // FASE 1: LANZA DEL JUICIO (0.5s) -> ESPIRAL SACRÍLEGA -> CONTRAATAQUE (1.5s)
+    // FASE 1: SELLO TELETRANSPORTE -> LANZA (0.68s) -> ESPIRAL -> GUARDIA CON AVISO
     // ========================================================================
     if (this.phase === 1) {
       if (this.currentState === 'P1_SPEAR_PREP') {
         this.isGuarding = false;
+        if (!this.teleportTarget) {
+          this.chooseTeleportTarget(targetEntity);
+        }
+        const progress = 1 - Math.max(0, this.stateTimer / 0.55);
+        this.telegraphs = [
+          {
+            type: 'CIRCLE',
+            style: 'TELEPORT',
+            x: this.teleportTarget.x,
+            y: this.teleportTarget.y,
+            radius: 46,
+            progress,
+          },
+        ];
         if (this.stateTimer <= 0) {
           this.teleportAroundPlayer(targetEntity, room);
-          this.transitionToState('P1_SPEAR_TELEGRAPH', 0.5);
+          this.transitionToState('P1_SPEAR_TELEGRAPH', 0.68);
         }
       } else if (this.currentState === 'P1_SPEAR_TELEGRAPH') {
-        // Telegrafía una línea recta delgada hacia el jugador por 0.5 segundos
         moveVx = 0;
         moveVy = 0;
+        const progress = 1 - Math.max(0, this.stateTimer / 0.68);
+        this.setWindup(true, progress, '#fbbf24');
+        const ray = MathUtils.getRayWallIntersection(
+          this.x,
+          this.y,
+          this.spearDir.x,
+          this.spearDir.y,
+          540,
+          ROOM_BOUNDS
+        );
         this.telegraphs = [
           {
             type: 'LINE',
             x1: this.x,
             y1: this.y,
-            x2: this.x + this.spearDir.x * 540,
-            y2: this.y + this.spearDir.y * 540,
-            width: 20,
+            x2: ray.x,
+            y2: ray.y,
+            width: 22,
+            active: true,
           },
         ];
         if (this.stateTimer <= 0) {
+          this.setWindup(false, 0);
           this.telegraphs = [];
           this.spearHasHit = false;
-          this.transitionToState('P1_SPEAR_DASH', 0.36);
+          this.transitionToState('P1_SPEAR_DASH', 0.42);
         }
       } else if (this.currentState === 'P1_SPEAR_DASH') {
-        // Dash casi instantáneo cruzando la línea telegrafiada
         moveVx = this.spearDir.x * this.spearSpeed;
         moveVy = this.spearDir.y * this.spearSpeed;
         if (
@@ -6730,95 +6741,125 @@ class SerafinBoss extends Boss {
           )
         ) {
           this.spearHasHit = true;
-          targetEntity.takeDamage(30, room);
+          targetEntity.takeDamage(28, room);
         }
         if (this.stateTimer <= 0) {
           this.spiralTimer = 0;
-          this.transitionToState('P1_SACRILEGE_SPIRAL', 2.8);
+          this.transitionToState('P1_SACRILEGE_SPIRAL', 2.7);
         }
       } else if (this.currentState === 'P1_SACRILEGE_SPIRAL') {
-        // Plumas Sacrílegas: Patrón Bullet Hell en espiral desde su centro
         const toCenter = MathUtils.normalize(ROOM_BOUNDS.centerX - this.x, ROOM_BOUNDS.centerY - this.y);
         moveVx = toCenter.x * this.speed * 0.7;
         moveVy = toCenter.y * this.speed * 0.7;
 
         this.spiralTimer -= dt;
         if (this.spiralTimer <= 0 && room) {
-          this.spiralTimer = 0.14;
+          this.spiralTimer = 0.15;
           this.spiralAngle += 0.36;
           const arms = 3;
           for (let k = 0; k < arms; k++) {
             const ang = this.spiralAngle + (k * Math.PI * 2) / arms;
             const dx = Math.cos(ang);
             const dy = Math.sin(ang);
-            room.enemyProjectiles.push(
-              new EnemyProjectile(
-                this.x + dx * (this.radius + 6),
-                this.y + dy * (this.radius + 6),
-                dx,
-                dy,
-                275,
-                14,
-                6
-              )
+            const feather = new EnemyProjectile(
+              this.x + dx * (this.radius + 6),
+              this.y + dy * (this.radius + 6),
+              dx,
+              dy,
+              265,
+              14,
+              6
             );
+            feather.ringColor = '#fbbf24';
+            feather.glowColor = 'rgba(251, 191, 36, 0.32)';
+            feather.coreColor = '#fef9c3';
+            room.enemyProjectiles.push(feather);
           }
         }
 
         if (this.stateTimer <= 0) {
+          this.isGuarding = false;
+          this.transitionToState('P1_GUARD_WINDUP', 0.48);
+        }
+      } else if (this.currentState === 'P1_GUARD_WINDUP') {
+        this.isGuarding = false;
+        moveVx = 0;
+        moveVy = 0;
+        const progress = 1 - Math.max(0, this.stateTimer / 0.48);
+        this.setWindup(true, progress, '#fde047');
+        this.telegraphs = [
+          {
+            type: 'CIRCLE',
+            style: 'GUARD',
+            x: this.x,
+            y: this.y,
+            radius: this.radius + 16,
+            progress,
+          },
+        ];
+        if (this.stateTimer <= 0) {
+          this.setWindup(false, 0);
           this.isGuarding = true;
-          this.transitionToState('P1_COUNTER_GUARD', 1.5);
+          this.transitionToState('P1_COUNTER_GUARD', 1.35);
         }
       } else if (this.currentState === 'P1_COUNTER_GUARD') {
-        // Estado `guard` durante 1.5 segundos: bloquea y contraataca proyectiles
         this.isGuarding = true;
         moveVx = 0;
         moveVy = 0;
         if (this.stateTimer <= 0) {
           this.isGuarding = false;
-          this.transitionToState('P1_SPEAR_PREP', 0.25);
+          this.teleportTarget = null;
+          this.transitionToState('P1_SPEAR_PREP', 0.55);
         }
       }
       return { moveVx, moveVy };
     }
 
     // ========================================================================
-    // FASE 2: VELOCIDAD Y COOLDOWNS x2 + COMBO TRIANGULAR + 6 ESPADAS SUSPENDIDAS
+    // FASE 2: COMBO TRIANGULAR LEGIBLE + RECUPERACIÓN + 6 ESPADAS RÍTMICAS
     // ========================================================================
     if (this.currentState === 'P2_TRIANGLE_TELEGRAPH') {
       this.isGuarding = false;
       moveVx = 0;
       moveVy = 0;
+      const totalTeleDur = 0.52;
+      const progress = 1 - Math.max(0, this.stateTimer / totalTeleDur);
+      this.setWindup(true, progress, '#fbbf24');
+
       const vStart = this.triangleVertices[this.triangleStep % 3];
       const vEnd = this.triangleVertices[(this.triangleStep + 1) % 3];
       const norm = MathUtils.normalize(vEnd.x - vStart.x, vEnd.y - vStart.y);
       this.spearDir = norm.length > 0 ? { x: norm.x, y: norm.y } : { x: 1, y: 0 };
       this.facingAngle = Math.atan2(this.spearDir.y, this.spearDir.x);
 
-      // Telegrafía el triángulo completo enfatizando la arista activa
+      // Enfatiza con flecha luminosa SOLO la arista activa
       this.telegraphs = [];
       for (let i = 0; i < 3; i++) {
         const pA = this.triangleVertices[i];
         const pB = this.triangleVertices[(i + 1) % 3];
+        const isCurrent = i === this.triangleStep % 3;
         this.telegraphs.push({
           type: 'LINE',
           x1: pA.x,
           y1: pA.y,
           x2: pB.x,
           y2: pB.y,
-          width: i === this.triangleStep % 3 ? 24 : 10,
+          width: isCurrent ? 26 : 10,
+          active: isCurrent,
+          arrow: isCurrent,
         });
       }
 
       if (this.stateTimer <= 0) {
+        this.setWindup(false, 0);
         this.spearHasHit = false;
-        this.transitionToState('P2_TRIANGLE_DASH', 0.24);
+        this.transitionToState('P2_TRIANGLE_DASH', 0.34);
       }
     } else if (this.currentState === 'P2_TRIANGLE_DASH') {
       const vEnd = this.triangleVertices[(this.triangleStep + 1) % 3];
       const toEnd = MathUtils.normalize(vEnd.x - this.x, vEnd.y - this.y);
-      moveVx = toEnd.x * 1460;
-      moveVy = toEnd.y * 1460;
+      moveVx = toEnd.x * 1050;
+      moveVy = toEnd.y * 1050;
 
       if (
         !this.spearHasHit &&
@@ -6832,7 +6873,7 @@ class SerafinBoss extends Boss {
         )
       ) {
         this.spearHasHit = true;
-        targetEntity.takeDamage(28, room);
+        targetEntity.takeDamage(26, room);
       }
 
       if (this.stateTimer <= 0 || Math.hypot(vEnd.x - this.x, vEnd.y - this.y) <= 26) {
@@ -6840,14 +6881,25 @@ class SerafinBoss extends Boss {
         this.y = vEnd.y;
         this.triangleStep += 1;
         if (this.triangleStep < 3) {
-          this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.24);
+          this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.52);
         } else {
-          this.swordsSpawnedInState = false;
-          this.transitionToState('P2_SUSPENDED_SWORDS', 1.75);
+          this.isStaggered = true;
+          this.staggerVulnerableMult = 1.25;
+          this.transitionToState('P2_SERAPH_RECOVERY', 1.25);
         }
       }
+    } else if (this.currentState === 'P2_SERAPH_RECOVERY') {
+      this.isStaggered = true;
+      this.staggerVulnerableMult = 1.25;
+      moveVx = 0;
+      moveVy = 0;
+      if (this.stateTimer <= 0) {
+        this.isStaggered = false;
+        this.staggerVulnerableMult = 1.0;
+        this.swordsSpawnedInState = false;
+        this.transitionToState('P2_SUSPENDED_SWORDS', 1.9);
+      }
     } else if (this.currentState === 'P2_SUSPENDED_SWORDS') {
-      // Instancia las 6 espadas suspendidas (se disparan a los 1.5s) mientras Serafín se mueve al doble de velocidad
       if (!this.swordsSpawnedInState && room) {
         this.swordsSpawnedInState = true;
         this.spawnSixSuspendedSwords(room);
@@ -6859,27 +6911,50 @@ class SerafinBoss extends Boss {
 
       this.spiralTimer -= dt;
       if (this.spiralTimer <= 0 && room) {
-        this.spiralTimer = 0.09; // Cooldown reducido a la mitad en Fase 2
+        this.spiralTimer = 0.11;
         this.spiralAngle += 0.42;
         for (let k = 0; k < 4; k++) {
           const ang = this.spiralAngle + (k * Math.PI * 2) / 4;
-          room.enemyProjectiles.push(
-            new EnemyProjectile(
-              this.x + Math.cos(ang) * (this.radius + 6),
-              this.y + Math.sin(ang) * (this.radius + 6),
-              Math.cos(ang),
-              Math.sin(ang),
-              310,
-              15,
-              6
-            )
+          const feather = new EnemyProjectile(
+            this.x + Math.cos(ang) * (this.radius + 6),
+            this.y + Math.sin(ang) * (this.radius + 6),
+            Math.cos(ang),
+            Math.sin(ang),
+            290,
+            15,
+            6
           );
+          feather.ringColor = '#fb7185';
+          feather.glowColor = 'rgba(251, 113, 133, 0.34)';
+          feather.coreColor = '#fff1f2';
+          room.enemyProjectiles.push(feather);
         }
       }
 
       if (this.stateTimer <= 0) {
+        this.isGuarding = false;
+        this.transitionToState('P2_GUARD_WINDUP', 0.42);
+      }
+    } else if (this.currentState === 'P2_GUARD_WINDUP') {
+      this.isGuarding = false;
+      moveVx = 0;
+      moveVy = 0;
+      const progress = 1 - Math.max(0, this.stateTimer / 0.42);
+      this.setWindup(true, progress, '#fde047');
+      this.telegraphs = [
+        {
+          type: 'CIRCLE',
+          style: 'GUARD',
+          x: this.x,
+          y: this.y,
+          radius: this.radius + 16,
+          progress,
+        },
+      ];
+      if (this.stateTimer <= 0) {
+        this.setWindup(false, 0);
         this.isGuarding = true;
-        this.transitionToState('P2_COUNTER_GUARD', 0.85);
+        this.transitionToState('P2_COUNTER_GUARD', 0.95);
       }
     } else if (this.currentState === 'P2_COUNTER_GUARD') {
       this.isGuarding = true;
@@ -6888,7 +6963,7 @@ class SerafinBoss extends Boss {
       if (this.stateTimer <= 0) {
         this.isGuarding = false;
         this.setupTriangleComboVertices(targetEntity);
-        this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.26);
+        this.transitionToState('P2_TRIANGLE_TELEGRAPH', 0.52);
       }
     }
 
@@ -7026,16 +7101,20 @@ class Player extends Entity {
     this.extraCoinChance = 0.0;
     this.enemySpawnMultiplier = 1.0;
 
-    // Estadísticas adicionales de v2.1 (Crítico, Esquivas con Cargas, Opciones de Tienda, Rutas)
+    // Estadísticas adicionales de v2.1 / v2.9 (Crítico, Esquivas con Cargas + Perfect Dodge)
     this.baseCritChance = 0.0;
     this.critChance = 0.0;
     this.maxDodgeCharges = 2; // 2 cargas de esquiva instantáneas de base
     this.dodgeCharges = 2;
-    this.dodgeCooldownSingle = 1.5; // Recarga rápida de 1.5s si aún le queda otra carga
-    this.dodgeCooldownEmpty = 2.5;  // Penalización de recuperación de 2.5s si agotó ambas cargas
-    this.dodgeCooldownDuration = 1.5;
+    this.dodgeCooldownSingle = 1.45; // Recarga rápida de 1.45s si aún le queda otra carga
+    this.dodgeCooldownEmpty = 1.95;  // Recuperación equilibrada de 1.95s si agotó ambas cargas
+    this.dodgeCooldownDuration = 1.45;
     this.dodgeCooldownTimer = 0;
     this.dodgeActiveTimer = 0;
+    this.dashIFrameTimer = 0;
+    this.dashGlideTimer = 0;
+    this.adrenalineTimer = 0;
+    this.perfectDodgeInternalCd = 0;
     this.dodgeDir = { x: 0, y: 0 };
     this.extraUpgradeChoices = 0;
     this.experienceMultiplier = 1.0;
@@ -7052,11 +7131,13 @@ class Player extends Entity {
     // Diccionario de niveles elementales (v1.4+)
     this.elementalPool = {};
 
-    this.weapons = [
-      new ProjectileWeapon(),
-      new ChargeLaserWeapon(),
-      new LongSwordWeapon(),
-    ];
+    this.weapons = (typeof WeaponSystem !== 'undefined')
+      ? WeaponSystem.createPlayerArsenal(this)
+      : [
+          new ProjectileWeapon(),
+          new ChargeLaserWeapon(),
+          new LongSwordWeapon(),
+        ];
     this.currentWeaponIndex = 0;
     this.sawShield = new OrbitalDefenseShield(this);
 
@@ -7246,6 +7327,8 @@ class Player extends Entity {
   }
 
   selectWeapon(indexOrDir) {
+    if (!this.weapons || this.weapons.length === 0) return;
+    this.cancelCurrentAttack();
     if (indexOrDir === 'next') {
       this.currentWeaponIndex = (this.currentWeaponIndex + 1) % this.weapons.length;
     } else if (indexOrDir === 'prev') {
@@ -7353,12 +7436,32 @@ class Player extends Entity {
   update(dt, input, room) {
     if (this.invulnerableTimer > 0) this.invulnerableTimer -= dt;
     if (this.roomTransitionGrace > 0) this.roomTransitionGrace -= dt;
-    if (this.dodgeActiveTimer > 0) this.dodgeActiveTimer = Math.max(0, this.dodgeActiveTimer - dt);
+    if (this.dashIFrameTimer > 0) this.dashIFrameTimer = Math.max(0, this.dashIFrameTimer - dt);
+    if (this.perfectDodgeInternalCd > 0) {
+      this.perfectDodgeInternalCd = Math.max(0, this.perfectDodgeInternalCd - dt);
+    }
+
+    if (this.adrenalineTimer > 0) {
+      this.adrenalineTimer = Math.max(0, this.adrenalineTimer - dt);
+      if (this.adrenalineTimer === 0 && this.itemManager) {
+        this.itemManager.applyPassiveStats();
+      }
+    }
+
+    const wasDashing = this.dodgeActiveTimer > 0;
+    if (this.dodgeActiveTimer > 0) {
+      this.dodgeActiveTimer = Math.max(0, this.dodgeActiveTimer - dt);
+      if (wasDashing && this.dodgeActiveTimer === 0) {
+        const glideDur = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.DASH_GLIDE_DURATION) || 0.12;
+        this.dashGlideTimer = glideDur;
+      }
+    }
+    if (this.dashGlideTimer > 0) {
+      this.dashGlideTimer = Math.max(0, this.dashGlideTimer - dt);
+    }
 
     // Recarga inteligente de Impulso Evasivo (`[SHIFT]` / `[F]`):
-    // 2 cargas base instantáneas.
-    // Si gasta 1 carga (quedando > 0): enfriamiento rápido de 1.5s.
-    // Si agota todas las cargas (quedando 0): penalización de recuperación de 2.5s para la primera carga.
+    // 2 cargas base instantáneas; Evasión Perfecta reembolsa enfriamiento.
     if (this.dodgeCharges < this.maxDodgeCharges) {
       if (this.dodgeCooldownTimer <= 0) {
         this.dodgeCooldownTimer = this.dodgeCharges === 0 ? this.dodgeCooldownEmpty : this.dodgeCooldownSingle;
@@ -7401,8 +7504,10 @@ class Player extends Entity {
       } else if (this.dodgeCooldownTimer <= 0) {
         this.dodgeCooldownTimer = this.dodgeCooldownSingle;
       }
-      this.dodgeActiveTimer = 0.18;
-      this.invulnerableTimer = Math.max(this.invulnerableTimer, 0.28);
+      this.dodgeActiveTimer = 0.20;
+      this.dashIFrameTimer = 0.30;
+      this.dashGlideTimer = 0;
+      this.invulnerableTimer = Math.max(this.invulnerableTimer, 0.30);
       this.dodgeDir =
         moveVec.length > 0
           ? { x: moveVec.x, y: moveVec.y }
@@ -7413,17 +7518,22 @@ class Player extends Entity {
       if (this.ui) this.ui.updateStats(this);
     }
 
-    const envSpeedMult =
-      room && typeof room.getEntitySpeedMultiplier === 'function'
+    // Durante el Dash o sus I-Frames, el jugador ignora slows ambientales (zonas de gravedad / charcos)
+    const isDashingNow = (typeof CombatSystem !== 'undefined')
+      ? CombatSystem.isPlayerDashing(this)
+      : (this.dodgeActiveTimer > 0 || this.dashIFrameTimer > 0);
+    const envSpeedMult = isDashingNow
+      ? 1.0
+      : (room && typeof room.getEntitySpeedMultiplier === 'function'
         ? room.getEntitySpeedMultiplier(this)
-        : 1.0;
+        : 1.0);
 
     const prevPlayerX = this.x;
     const prevPlayerY = this.y;
 
     if (this.dodgeActiveTimer > 0) {
       // Durante el impulso evasivo (dodge / dash), el cerdito salta por los aires sobre los abismos
-      const dashMult = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.DASH_SPEED_MULT) || 2.45;
+      const dashMult = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.DASH_SPEED_MULT) || 2.50;
       this.vx = this.dodgeDir.x * this.speed * dashMult;
       this.vy = this.dodgeDir.y * this.speed * dashMult;
       this.x += this.vx * dt;
@@ -7432,6 +7542,24 @@ class Player extends Entity {
       // Desplazamiento dinámico de enemigos para no quedar encajonado
       if (typeof CombatSystem !== 'undefined') {
         CombatSystem.processDashEnemyDisplacement(this, room, dt);
+      }
+    } else if (this.dashGlideTimer > 0) {
+      // Post-Dash Momentum Glide: transición fluida para encadenar esquivas sin freno brusco
+      const glideMax = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.DASH_GLIDE_DURATION) || 0.12;
+      const glideRatio = MathUtils.clamp(this.dashGlideTimer / glideMax, 0, 1);
+      const glideDirX = moveVec.length > 0 ? moveVec.x : this.dodgeDir.x;
+      const glideDirY = moveVec.length > 0 ? moveVec.y : this.dodgeDir.y;
+      const glideMult = 1.0 + 0.85 * glideRatio;
+      this.vx = glideDirX * this.speed * envSpeedMult * glideMult;
+      this.vy = glideDirY * this.speed * envSpeedMult * glideMult;
+
+      this.x += this.vx * dt;
+      if (room && typeof room.isPointInPit === 'function' && room.isPointInPit(this.x, this.y, this.radius)) {
+        this.x = prevPlayerX;
+      }
+      this.y += this.vy * dt;
+      if (room && typeof room.isPointInPit === 'function' && room.isPointInPit(this.x, this.y, this.radius)) {
+        this.y = prevPlayerY;
       }
     } else {
       this.vx = moveVec.x * this.speed * envSpeedMult;
@@ -7508,6 +7636,16 @@ class Player extends Entity {
     this.currentWeapon.draw(ctx, this, aimState);
 
     ctx.save();
+    if (this.adrenalineTimer > 0) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius + 9, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     if (this.dodgeActiveTimer > 0) {
       ctx.beginPath();
       ctx.arc(
@@ -7534,7 +7672,7 @@ class Player extends Entity {
       const frame = frames[frameIdx];
 
       // Elevación óptica en el aire al saltar fosos durante la esquiva
-      const jumpElevation = this.dodgeActiveTimer > 0 ? -12 * Math.sin((this.dodgeActiveTimer / 0.18) * Math.PI) : 0;
+      const jumpElevation = this.dodgeActiveTimer > 0 ? -12 * Math.sin((this.dodgeActiveTimer / 0.20) * Math.PI) : 0;
 
       // Sombra suave proyectada bajo el personaje
       ctx.beginPath();
@@ -8532,7 +8670,9 @@ class Room {
     else baseLabel = 'SALA NORMAL';
 
     let layoutSuffix = '';
-    if (this.layoutType === 'CORRIDOR_H') layoutSuffix = ' // PASILLO H';
+    if (this.templateName) {
+      layoutSuffix = ` // ${this.templateName.toUpperCase()}`;
+    } else if (this.layoutType === 'CORRIDOR_H') layoutSuffix = ' // PASILLO H';
     else if (this.layoutType === 'CORRIDOR_V') layoutSuffix = ' // PASILLO V';
     else if (this.layoutType === 'UPPER_PATH') layoutSuffix = ' // CAMINO SUPERIOR';
     else if (this.layoutType === 'LOWER_PATH') layoutSuffix = ' // CAMINO INFERIOR';
@@ -8720,7 +8860,13 @@ class Room {
   }
 
   generateObstacles() {
+    if (this.hasAuthoredTemplate) return;
     if (this.type === 'START' || this.type === 'SANCTUARY' || this.type === 'TREASURE' || this.type === 'SHOP' || this.type === 'BOSS' || this.type === 'NEXUS') return;
+
+    if (typeof LevelTemplateSystem !== 'undefined' && typeof LevelTemplateSystem.generateStructuredObstaclesForRoom === 'function') {
+      LevelTemplateSystem.generateStructuredObstaclesForRoom(this);
+      return;
+    }
 
     const b = this.bounds;
     const padding = 130;
@@ -9594,14 +9740,26 @@ class Room {
       if (enemy.isBurrowed) enemy.draw(ctx);
     }
 
-    // 3. Z-INDEX DE ENTIDADES Y PROYECTILES EN SUPERFICIE
+    // 3. Z-INDEX DE ENTIDADES Y PROYECTILES EN SUPERFICIE (v2.9: lectura limpia en salas de Jefe)
+    const isBossBattleActive = this.type === 'BOSS' && !this.cleared;
     for (const coin of this.coins) coin.draw(ctx);
-    for (const part of this.particles) part.draw(ctx);
-    for (const proj of this.projectiles) proj.draw(ctx);
-    for (const eProj of this.enemyProjectiles) eProj.draw(ctx);
+
+    if (isBossBattleActive) {
+      ctx.save();
+      ctx.globalAlpha = 0.78;
+      for (const part of this.particles) part.draw(ctx);
+      for (const proj of this.projectiles) proj.draw(ctx);
+      ctx.restore();
+    } else {
+      for (const part of this.particles) part.draw(ctx);
+      for (const proj of this.projectiles) proj.draw(ctx);
+    }
+
     for (const enemy of this.enemies) {
       if (!enemy.isBurrowed) enemy.draw(ctx);
     }
+    // Proyectiles enemigos siempre en la capa superior para lectura nítida sobre cualquier efecto
+    for (const eProj of this.enemyProjectiles) eProj.draw(ctx);
   }
 
   drawDoors(ctx) {
@@ -10412,9 +10570,23 @@ class DungeonFloor {
   generate() {
     this.rooms.clear();
 
-    // 1. Generar la topología de coordenadas usando Random Walker
+    // 1. Generar la topología de coordenadas: Estampar Sección Multi-Sala de Autor + Random Walker
     const coordsMap = new Map();
     coordsMap.set(DungeonFloor.key(0, 0), { gridX: 0, gridY: 0 });
+
+    const stampedSection =
+      typeof LevelTemplateSystem !== 'undefined' &&
+      typeof LevelTemplateSystem.stampFloorSection === 'function'
+        ? LevelTemplateSystem.stampFloorSection(coordsMap, this.targetRooms)
+        : new Map();
+
+    this.activeSectionName = null;
+    for (const stInfo of stampedSection.values()) {
+      if (stInfo.sectionName) {
+        this.activeSectionName = stInfo.sectionName;
+        break;
+      }
+    }
 
     const dirList = Object.values(DIRECTIONS);
     let walkerX = 0;
@@ -10441,11 +10613,13 @@ class DungeonFloor {
       walkerY = nextY;
     }
 
-    // 2. Identificar la coordenada más lejana a (0,0) como Sala de Salida (`isExitRoom = true`)
+    // 2. Identificar la coordenada más lejana a (0,0) como Sala de Salida / Jefe (respetando salas especiales estampadas)
     let exitKey = null;
     let maxDist = -1;
     for (const [k, coord] of coordsMap.entries()) {
       if (coord.gridX === 0 && coord.gridY === 0) continue;
+      const stamped = stampedSection.get(k);
+      if (stamped && (stamped.roomType === 'TREASURE' || stamped.roomType === 'SANCTUARY')) continue;
       const dist = Math.abs(coord.gridX) + Math.abs(coord.gridY);
       if (dist > maxDist) {
         maxDist = dist;
@@ -10454,7 +10628,21 @@ class DungeonFloor {
     }
 
     // 3. Selección y ordenamiento de salas especiales (Jefe, Tesoro, Tienda, Santuario)
-    const candidates = Array.from(coordsMap.keys()).filter((k) => k !== '0,0' && k !== exitKey);
+    let stampedTreasureKey = null;
+    let stampedSanctuaryKey = null;
+    for (const [sk, sInfo] of stampedSection.entries()) {
+      if (sk === exitKey) continue;
+      if (sInfo.roomType === 'TREASURE' && !stampedTreasureKey) stampedTreasureKey = sk;
+      if (sInfo.roomType === 'SANCTUARY' && !stampedSanctuaryKey) stampedSanctuaryKey = sk;
+    }
+
+    const candidates = Array.from(coordsMap.keys()).filter(
+      (k) =>
+        k !== '0,0' &&
+        k !== exitKey &&
+        k !== stampedTreasureKey &&
+        k !== stampedSanctuaryKey
+    );
     const getNeighborCount = (k) => {
       const c = coordsMap.get(k);
       let count = 0;
@@ -10463,12 +10651,19 @@ class DungeonFloor {
       }
       return count;
     };
-    candidates.sort((a, b) => getNeighborCount(a) - getNeighborCount(b));
+    // Priorizar celdas libres (no estampadas como combate) para ubicar las salas especiales restantes en callejones
+    candidates.sort((a, b) => {
+      const aStamped = stampedSection.has(a) ? 1 : 0;
+      const bStamped = stampedSection.has(b) ? 1 : 0;
+      if (aStamped !== bStamped) return aStamped - bStamped;
+      return getNeighborCount(a) - getNeighborCount(b);
+    });
 
-    const treasureKey = candidates.length > 0 ? candidates.shift() : null;
+    const treasureKey = stampedTreasureKey || (candidates.length > 0 ? candidates.shift() : null);
     const shopKey = candidates.length > 0 ? candidates.shift() : null;
-    const sanctuaryKey = candidates.length > 0 ? candidates.shift() : null;
+    const sanctuaryKey = stampedSanctuaryKey || (candidates.length > 0 ? candidates.shift() : null);
     const combatKeys = candidates;
+    const usedTemplateIds = new Set();
 
     // 4. Instanciar polimórficamente cada sala en la cuadrícula real
     const startRoom = new StartRoom(0, 0, this.sectionNumber, this.levelNumber);
@@ -10499,9 +10694,10 @@ class DungeonFloor {
       );
     }
 
-    // Variedad y adaptación inteligente de layouts según la conectividad de la sala
+    // Variedad y adaptación inteligente: 75% Plantillas de Autor (13x9) + 25% Procedural Estructurado
     combatKeys.forEach((k, idx) => {
       const c = coordsMap.get(k);
+      const stamped = stampedSection.get(k);
       const hasN = coordsMap.has(DungeonFloor.key(c.gridX, c.gridY - 1));
       const hasS = coordsMap.has(DungeonFloor.key(c.gridX, c.gridY + 1));
       const hasW = coordsMap.has(DungeonFloor.key(c.gridX - 1, c.gridY));
@@ -10509,24 +10705,24 @@ class DungeonFloor {
 
       let chosenLayout;
       if (!hasN && !hasS && (hasW || hasE)) {
-        // Conexión puramente horizontal: pasillo horizontal auténtico o caminos con abismo
         const pool = ['CORRIDOR_H', 'UPPER_PATH', 'LOWER_PATH', 'CORNERS'];
         chosenLayout = pool[idx % pool.length];
       } else if (!hasW && !hasE && (hasN || hasS)) {
-        // Conexión puramente vertical: pasillo vertical auténtico o cañón
         const pool = ['CORRIDOR_V', 'TWIN_ISLANDS', 'CROSS_CHASM', 'OPEN'];
         chosenLayout = pool[idx % pool.length];
       } else {
-        // Conexión multidireccional: layouts con acceso a 4 caminos
         const pool = ['CORNERS', 'CROSS_CHASM', 'TWIN_ISLANDS', 'UPPER_PATH', 'LOWER_PATH', 'OPEN'];
         chosenLayout = pool[idx % pool.length];
       }
 
       let roomInstance;
-      if (idx === 0) {
+      const desiredType = stamped && stamped.roomType ? stamped.roomType : null;
+      if (desiredType === 'HARD' || (!desiredType && idx === 0)) {
         roomInstance = new HardRoom(c.gridX, c.gridY, this.sectionNumber, this.levelNumber, chosenLayout);
-      } else if (idx === 1) {
+      } else if (desiredType === 'HAZARD' || (!desiredType && idx === 1)) {
         roomInstance = new HazardRoom(c.gridX, c.gridY, this.sectionNumber, this.levelNumber, chosenLayout);
+      } else if (desiredType === 'NORMAL') {
+        roomInstance = new NormalRoom(c.gridX, c.gridY, this.sectionNumber, this.levelNumber, chosenLayout);
       } else {
         const roll = Math.random();
         if (roll < 0.3) {
@@ -10537,6 +10733,21 @@ class DungeonFloor {
           roomInstance = new NormalRoom(c.gridX, c.gridY, this.sectionNumber, this.levelNumber, chosenLayout);
         }
       }
+
+      if (typeof LevelTemplateSystem !== 'undefined') {
+        if (stamped && stamped.templateId) {
+          roomInstance.assignedTemplateId = stamped.templateId;
+          roomInstance.floorSectionName = stamped.sectionName || null;
+          usedTemplateIds.add(stamped.templateId);
+        } else if (Math.random() < (LevelTemplateSystem.AUTHORED_ROOM_CHANCE || 0.75)) {
+          const pickedTpl = LevelTemplateSystem.pickTemplateForRoomType(roomInstance.type, usedTemplateIds);
+          if (pickedTpl) {
+            roomInstance.assignedTemplateId = pickedTpl.id;
+            usedTemplateIds.add(pickedTpl.id);
+          }
+        }
+      }
+
       this.rooms.set(k, roomInstance);
     });
 
@@ -10603,8 +10814,23 @@ class DungeonFloor {
       }
     }
 
-    // 7. Despejar cualquier foso en los umbrales de puertas activas y poblar contenido
+    // 7. Despejar cualquier foso en los umbrales de puertas activas y poblar contenido (Plantillas 13x9 o Procedural)
     for (const room of this.rooms.values()) {
+      if (
+        room.assignedTemplateId &&
+        typeof LevelTemplateSystem !== 'undefined' &&
+        typeof LevelTemplateSystem.getTemplateById === 'function'
+      ) {
+        const tpl = LevelTemplateSystem.getTemplateById(room.assignedTemplateId);
+        if (tpl) {
+          LevelTemplateSystem.applyTemplateToRoom(room, tpl, {
+            spawnMultiplier: this.spawnMult,
+            eliteChanceMult: this.eliteChanceMult
+          });
+          room.ensureDoorPassages();
+          continue;
+        }
+      }
       room.ensureDoorPassages();
       room.populateRoomContent(this.spawnMult, this.ui, this.eliteChanceMult);
       if (typeof room.generateObstacles === 'function') {
@@ -11168,7 +11394,7 @@ class UIManager {
       this.dom.statMagnet.textContent = `x${player.coinMagnetMultiplier.toFixed(2)}`;
     }
     const activeEvo = (typeof EvolutionManager !== 'undefined' && player.currentWeapon)
-      ? EvolutionManager.getActiveEvolution(player, player.currentWeapon.name)
+      ? EvolutionManager.getActiveEvolution(player, player.currentWeapon)
       : null;
 
     if (this.dom.statWeaponName && player.currentWeapon) {
@@ -11178,12 +11404,11 @@ class UIManager {
         this.dom.statWeaponName.textContent = player.currentWeapon.name;
       }
     }
-    if (this.dom.hudWeaponSymbol && typeof player.currentWeaponIndex === 'number') {
+    if (this.dom.hudWeaponSymbol && player.currentWeapon) {
       if (activeEvo) {
         this.dom.hudWeaponSymbol.textContent = activeEvo.symbol;
       } else {
-        const symbols = ['🔮', '⚡', '⚔️'];
-        this.dom.hudWeaponSymbol.textContent = symbols[player.currentWeaponIndex] || '🔮';
+        this.dom.hudWeaponSymbol.textContent = player.currentWeapon.symbol || '🔮';
       }
     }
     if (this.dom.hudWeaponMode && player.currentWeapon && typeof player.currentWeapon.getModeBadge === 'function') {
@@ -11589,42 +11814,50 @@ class UIManager {
     const fsmNames = {
       // Goliat
       P1_MARCH: 'Marcha + Ráfaga Abanico',
-      P1_HAMMER_TELEGRAPH: '¡PELIGRO! Martillo Sísmico (1s)',
+      P1_HAMMER_TELEGRAPH: '¡PELIGRO! Martillo Sísmico',
       P1_HAMMER_RECOVERY: 'Impacto Sísmico',
-      P1_WALL_TELEGRAPH: '¡PELIGRO! Muralla Recta (1s)',
+      P1_WALL_TELEGRAPH: '¡PELIGRO! Embestida de Muralla',
       P1_WALL_DASH: 'Embestida de Muralla',
-      P2_PREPARE_DASH: 'Fijando Objetivo (Vel x2)',
+      P1_WALL_STUNNED: '¡ESTRELLADO EN MURO! (¡ATÁCALO!)',
+      P2_PREPARE_DASH: 'Fijando Trayectoria Explosiva',
       P2_EXPLOSIVE_DASH: 'Dash Explosivo (Suelo Agrietado)',
       P2_RING_JUMP_AIR: '¡SALTO AL CENTRO (INVULNERABLE)!',
+      P2_RING_LAND_RECOVERY: '¡SOBRECALENTADO! (Ventana de Castigo)',
 
       // Némesis
       P1_OCULAR_JUDGMENT: 'Juicio Ocular (Soft-Homing)',
-      P1_PRISON_TELEGRAPH: '¡PELIGRO! Prisión Geométrica (1s)',
+      P1_PRISON_TELEGRAPH: '¡PELIGRO! Prisión Geométrica',
       P1_GRAVITY_RAIN: 'Lluvia Invertida (Gravedad 0.5x)',
+      P1_OCULAR_RECOVERY: '¡OJO EXPUESTO! (Ventana de Castigo)',
       P2_OCULAR_JUDGMENT: 'Juicio Ocular Despierto + Escudos',
-      P2_PRISON_TELEGRAPH: '¡PELIGRO! Prisión del Vacío (1s)',
+      P2_PRISON_TELEGRAPH: '¡PELIGRO! Prisión del Vacío',
       P2_GRAVITY_RAIN: 'Lluvia Invertida + Clon Oscuro',
+      P2_OCULAR_RECOVERY: '¡NÚCLEO ABIERTO! (Ventana de Castigo)',
 
       // Abismo
       P1_BURROW_CHASE: 'Rastro de Muerte (Bajo Tierra)',
       P1_EMERGE_TELEGRAPH: '¡PELIGRO! Emergencia Sísmica',
-      P1_JAWS_SUCTION: 'Mandíbulas (Succión Activa 2s)',
-      P1_BITE_RECOVERY: 'Mordida Frontal Ejecutada',
-      P2_AMBUSH_BURROW: 'Emboscada Triple (Predictiva)',
+      P1_JAWS_SUCTION: 'Mandíbulas (¡Dash corta succión!)',
+      P1_BITE_RECOVERY: '¡JADEANDO EN SUPERFICIE! (¡ATÁCALO!)',
+      P2_AMBUSH_BURROW: 'Emboscada Triple Subterránea',
       P2_AMBUSH_TELEGRAPH: '¡PELIGRO! Erupción Abisal',
       P2_AMBUSH_SURFACE_PAUSE: 'Suelo Agrietado Permanente',
+      P2_EXHAUSTED_SURFACE: '¡AGOTADO EN SUPERFICIE! (+25% DMG)',
       P2_JAWS_SUCTION: 'Hambre Infinita (Succión + Minions)',
 
       // Serafín
-      P1_SPEAR_PREP: 'Desplazamiento Celestial',
-      P1_SPEAR_TELEGRAPH: '¡PELIGRO! Lanza del Juicio (0.5s)',
+      P1_SPEAR_PREP: 'Sello de Teletransporte',
+      P1_SPEAR_TELEGRAPH: '¡PELIGRO! Lanza del Juicio',
       P1_SPEAR_DASH: 'Estocada Relámpago',
       P1_SACRILEGE_SPIRAL: 'Plumas Sacrílegas (Espiral)',
-      P1_COUNTER_GUARD: '¡GUARDIA ACTIVA! (Contraataque)',
+      P1_GUARD_WINDUP: '¡PLEGANDO ALAS! (Prep. Contraataque)',
+      P1_COUNTER_GUARD: '¡GUARDIA ACTIVA! (NO DISPARAR)',
       P2_TRIANGLE_TELEGRAPH: '¡PELIGRO! Combo Triangular',
-      P2_TRIANGLE_DASH: 'Estocada Triangular (Vel x2)',
-      P2_SUSPENDED_SWORDS: '6 Espadas Suspendidas (1.5s)',
-      P2_COUNTER_GUARD: '¡GUARDIA SERÁFICA! (Contraataque)',
+      P2_TRIANGLE_DASH: 'Estocada Triangular',
+      P2_SERAPH_RECOVERY: '¡ALAS CAÍDAS! (Ventana de Castigo)',
+      P2_SUSPENDED_SWORDS: '6 Espadas Celestiales Rítmicas',
+      P2_GUARD_WINDUP: '¡PREPARANDO GUARDIA SERÁFICA!',
+      P2_COUNTER_GUARD: '¡GUARDIA SERÁFICA! (NO DISPARAR)',
     };
     if (this.dom.bossFsmState) {
       this.dom.bossFsmState.textContent = fsmNames[boss.currentState] || boss.currentState;
@@ -11635,8 +11868,9 @@ class UIManager {
           ? boss.getDefenseStatusText()
           : 'Vulnerable';
       this.dom.bossArmorState.textContent = defText;
-      this.dom.bossArmorState.style.color =
-        boss.isBurrowed || boss.isGuarding || boss.hasFrontalArmor || (boss.orbitShields && boss.orbitShields.length > 0)
+      this.dom.bossArmorState.style.color = boss.isStaggered
+        ? '#38bdf8'
+        : (boss.isBurrowed || boss.isGuarding || boss.hasFrontalArmor || (boss.orbitShields && boss.orbitShields.length > 0))
           ? '#facc15'
           : '#f87171';
     }
@@ -12165,25 +12399,38 @@ class Game {
     // Seguridad de entrada: garantizar que ningún enemigo quede pegado a la puerta de ingreso
     const entryX = this.player.x;
     const entryY = this.player.y;
-    const minEntranceClearance = 220;
+    const minEntranceClearance = this.currentRoom.hasAuthoredTemplate ? 165 : 220;
 
     for (const enemy of this.currentRoom.enemies) {
       const dist = Math.hypot(enemy.x - entryX, enemy.y - entryY);
       if (dist < minEntranceClearance) {
-        const margin = Math.min(90, Math.min(this.currentRoom.bounds.width, this.currentRoom.bounds.height) * 0.22);
-        const safePos = this.currentRoom.getSafeSpawnPosition(
-          this.currentRoom.bounds.left + margin,
-          this.currentRoom.bounds.right - margin,
-          this.currentRoom.bounds.top + margin,
-          this.currentRoom.bounds.bottom - margin,
-          35,
-          minEntranceClearance + 30
-        );
-        enemy.x = safePos.x;
-        enemy.y = safePos.y;
+        if (this.currentRoom.hasAuthoredTemplate) {
+          // Desplazar suavemente hacia el interior manteniendo la formación de la plantilla
+          const pushDir = MathUtils.normalize(
+            this.currentRoom.bounds.centerX - entryX,
+            this.currentRoom.bounds.centerY - entryY
+          );
+          const targetX = entryX + pushDir.x * (minEntranceClearance + 25) + (enemy.x - entryX) * 0.5;
+          const targetY = entryY + pushDir.y * (minEntranceClearance + 25) + (enemy.y - entryY) * 0.5;
+          const safePos = this.currentRoom.getWalkablePosition(targetX, targetY, enemy.radius || 20);
+          enemy.x = safePos.x;
+          enemy.y = safePos.y;
+        } else {
+          const margin = Math.min(90, Math.min(this.currentRoom.bounds.width, this.currentRoom.bounds.height) * 0.22);
+          const safePos = this.currentRoom.getSafeSpawnPosition(
+            this.currentRoom.bounds.left + margin,
+            this.currentRoom.bounds.right - margin,
+            this.currentRoom.bounds.top + margin,
+            this.currentRoom.bounds.bottom - margin,
+            35,
+            minEntranceClearance + 30
+          );
+          enemy.x = safePos.x;
+          enemy.y = safePos.y;
+        }
       }
-      // Retardo de reacción inicial para dar al jugador un vistazo general del entorno
-      enemy.reactionDelay = 0.25;
+      // Retardo de reacción inicial para dar al jugador lectura inmediata del patrón de la sala
+      enemy.reactionDelay = this.currentRoom.hasAuthoredTemplate ? 0.42 : 0.25;
     }
 
     this.player.roomTransitionGrace = 0.35;
