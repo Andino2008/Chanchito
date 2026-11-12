@@ -39,6 +39,18 @@ const CONFIG = {
   ELITE_HP_MULT: 1.5, // x1.5 de Vida Máxima
   ELITE_SPEED_MULT: 1.25, // x1.25 de Velocidad de Movimiento (balanceado y justo)
 
+  // Topes globales absolutos de velocidad de caminata (Player baseSpeed = 270 px/s)
+  ENEMY_SPEED_CAPS: {
+    COMMON: 215,
+    FLYER: 225,
+    SPLITTER_MINI: 225,
+    ELITE: 235,
+    BERSERK_MAX: 242,
+    BOSS_WALK_P1: 220,
+    BOSS_WALK_P2: 240,
+    ABISMO_BURROW: 255,
+  },
+
   SECTION_2_BASE_DEFENSE: 25,
   ELEMENTAL_RESIST_MULT: 0.2,
   ELEMENTAL_WEAK_MULT: 1.5,
@@ -1987,7 +1999,7 @@ class Projectile extends Entity {
 }
 
 class EnemyProjectile extends Entity {
-  constructor(x, y, dirX, dirY, speed = 310, damage = 14, radius = 6) {
+  constructor(x, y, dirX, dirY, speed = 310, damage = 14, radius = 6, sourceArchetype = 'ShooterEnemy') {
     super(x, y, radius, '#fb923c');
     const ngMult = isMortalMode ? (4 * ngPlusLevel) : (1 + ngPlusLevel);
     const eyeDmgMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
@@ -2000,6 +2012,7 @@ class EnemyProjectile extends Entity {
     this.glowColor = 'rgba(249, 115, 22, 0.34)';
     this.coreColor = '#fff7ed';
     this.ringColor = '#f97316';
+    this.sourceArchetype = sourceArchetype;
     this._perfectDodged = false;
   }
 
@@ -2032,7 +2045,12 @@ class EnemyProjectile extends Entity {
         }
         return;
       }
-      player.takeDamage(this.damage, room, { isProjectile: true, vx: this.vx, vy: this.vy });
+      player.takeDamage(this.damage, room, {
+        isProjectile: true,
+        vx: this.vx,
+        vy: this.vy,
+        sourceArchetype: this.sourceArchetype || 'ShooterEnemy',
+      });
       room.spawnParticle(this.x, this.y, -this.vx * 0.25, -this.vy * 0.25, 4, '#fdba74', 0.35);
       this.markedForDeletion = true;
     }
@@ -2975,7 +2993,7 @@ class Enemy extends Entity {
     }
 
     const baseSpeed = isBoss ? 110 + globalFloor * 4 : 115 + globalFloor * 6;
-    this.speed = Math.min(310, baseSpeed * this.ngSpeedMult);
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.COMMON, baseSpeed * this.ngSpeedMult);
     this.contactDamage = Math.round((isBoss ? 25 : 15) * this.ngMult);
 
     this.activeEffects = [];
@@ -3479,6 +3497,36 @@ class Enemy extends Entity {
       moveVx *= envSpeedMult * bossSlowMult;
       moveVy *= envSpeedMult * bossSlowMult;
 
+      // Tope absoluto de velocidad en caminata (impide que Berserk / BrotherEye superen al jugador)
+      const isTelegraphedDash = (
+        this.dashState === 'DASH' ||
+        this.currentState === 'P1_WALL_DASH' ||
+        this.currentState === 'P2_DASH_EXECUTE' ||
+        this.currentState === 'P2_TRIANGLE_DASH' ||
+        this.currentState === 'P1_SPEAR_LUNGE' ||
+        this.currentState === 'P2_AMBUSH_BURROW'
+      );
+      if (!isTelegraphedDash) {
+        const capTable = CONFIG.ENEMY_SPEED_CAPS;
+        let walkCap = capTable.COMMON;
+        if (this.isBoss) {
+          walkCap = this.phase >= 2 ? capTable.BOSS_WALK_P2 : capTable.BOSS_WALK_P1;
+          if (this.isBurrowed) walkCap = capTable.ABISMO_BURROW;
+        } else if (this.isElite) {
+          walkCap = this.isBerserk ? capTable.BERSERK_MAX : capTable.ELITE;
+        } else if (this.isFlying) {
+          walkCap = this.isBerserk ? capTable.BERSERK_MAX : capTable.FLYER;
+        } else if (this.isBerserk) {
+          walkCap = capTable.BERSERK_MAX;
+        }
+        const moveMag = Math.hypot(moveVx, moveVy);
+        if (moveMag > walkCap && moveMag > 0) {
+          const capScale = walkCap / moveMag;
+          moveVx *= capScale;
+          moveVy *= capScale;
+        }
+      }
+
       if (!miracleEffect) {
         for (const other of allEnemies) {
           if (other === this || other.markedForDeletion) continue;
@@ -3833,7 +3881,7 @@ class SplitterEnemy extends Enemy {
       this.radius = parentStats.radius * 0.5;
       this.maxHp = Math.max(1, Math.round(parentStats.maxHp * 0.5));
       this.hp = this.maxHp;
-      this.speed = parentStats.speed * 1.2;
+      this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.SPLITTER_MINI, parentStats.speed * 1.15);
       this.defense = parentStats.defense;
       this.resistantElement = parentStats.resistantElement;
       this.weakElement = parentStats.weakElement;
@@ -3934,7 +3982,7 @@ class EliteEnemy extends Enemy {
     // x1.5 de Vida Máxima y velocidad con tope táctico (Propuesta B)
     this.maxHp = Math.round(this.maxHp * CONFIG.ELITE_HP_MULT);
     this.hp = this.maxHp;
-    this.speed = Math.min(340, this.speed * 1.35);
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.ELITE, this.speed * CONFIG.ELITE_SPEED_MULT);
   }
 
   draw(ctx) {
@@ -3988,7 +4036,7 @@ class FlyerEnemy extends Enemy {
     this.radius = 14;
     this.color = '#a855f7';
     this.isFlying = true;
-    this.speed = Math.min(260, 135 + (sectionNumber - 1) * 20);
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.FLYER, 135 + (sectionNumber - 1) * 16);
     this.shootTimer = 1.2 + Math.random() * 1.5;
     this.maxHp = Math.round((38 + levelNumber * 12) * CONFIG.ENEMY_HP_MULTIPLIER * this.ngMult);
     this.hp = this.maxHp;
@@ -4007,7 +4055,7 @@ class FlyerEnemy extends Enemy {
       const norm = MathUtils.normalize(dx, dy);
       if (room && room.enemyProjectiles) {
         room.enemyProjectiles.push(
-          new EnemyProjectile(this.x, this.y, norm.x, norm.y, 290, Math.round(14 * this.ngMult), 6)
+          new EnemyProjectile(this.x, this.y, norm.x, norm.y, 290, Math.round(14 * this.ngMult), 6, 'FlyerEnemy')
         );
         if (typeof room.spawnParticle === 'function') {
           room.spawnParticle(this.x, this.y, norm.x * 40, norm.y * 40, 3, '#c084fc', 0.3);
@@ -4216,7 +4264,7 @@ class CrackedGroundHazard extends Entity {
             player.radius
           )
         ) {
-          player.takeDamage(this.damage, room);
+          player.takeDamage(this.damage, room, { sourceArchetype: 'Hazard' });
         }
         for (let i = 0; i < 10; i++) {
           const ang = (Math.PI * 2 * i) / 10 + Math.random() * 0.3;
@@ -4310,7 +4358,7 @@ class ExpandingRingHazard extends Entity {
           CombatSystem.triggerPerfectDodge(player, room, player.x, player.y, '⚡ ANILLO EVADIDO');
         } else {
           this.hasHitPlayer = true;
-          player.takeDamage(this.damage, room);
+          player.takeDamage(this.damage, room, { sourceArchetype: 'GoliatBoss' });
         }
       }
     }
@@ -4367,7 +4415,11 @@ class Boss extends Enemy {
     this.hp = this.maxHp;
     this.contactDamage = Math.round(25 * this.ngMult);
     const baseBossSpeed = 110 + ((sectionNumber - 1) * 4 + levelNumber) * 4;
-    this.speed = Math.min(290, baseBossSpeed * this.ngSpeedMult);
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.BOSS_WALK_P1, baseBossSpeed * this.ngSpeedMult);
+
+    // Un Jefe jamás hereda el ciclo de invulnerabilidad aleatorio de HardRoom
+    this.hasInvulnerabilityCycle = false;
+    this.isCycleInvulnerable = false;
 
     // Sistema de Fases (al 50% de HP dispara onPhaseChange con Phase Gate duro)
     this.phase = 1;
@@ -4524,6 +4576,14 @@ class Boss extends Enemy {
   }
 
   update(dt, player, allEnemies, room) {
+    // Decrementar siempre la invulnerabilidad temporal (ej. transformación Fase 2 de boss_phases.js)
+    // para que ningún Jefe (Abismo/Serafín/Goliat/Némesis) quede invulnerable en Fase 2
+    if (this.invulnerableTimer > 0) {
+      this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
+    }
+    this.hasInvulnerabilityCycle = false;
+    this.isCycleInvulnerable = false;
+
     const threshold = this.getDpsSoftThreshold();
     this.dpsMeter = Math.max(0, this.dpsMeter - threshold * dt);
     if (this.dpsMeter <= threshold * 0.85) {
@@ -4790,7 +4850,7 @@ class GoliatBoss extends Boss {
     super.onPhaseChange();
     this.color = '#dc2626'; // Carmesí incandescente en Fase 2
     this.hasFrontalArmor = false; // Pierde el escudo frontal (daño normal desde todos los ángulos)
-    this.speed = this.basePhase1Speed * 2.0; // Duplica su velocidad base
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.BOSS_WALK_P2, this.basePhase1Speed * 2.0);
     this.p2DashCount = 0;
     this.transitionToState('P2_PREPARE_DASH', 0.6);
   }
@@ -4803,9 +4863,6 @@ class GoliatBoss extends Boss {
 
   computeAIMovement(dt, targetEntity, miracleEffect, room) {
     this.stateTimer -= dt;
-    if (this.invulnerableTimer > 0) {
-      this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
-    }
     if (this.hammerVisualExpand > 0) {
       this.hammerVisualExpand = Math.max(0, this.hammerVisualExpand - dt);
     }
@@ -4843,7 +4900,8 @@ class GoliatBoss extends Boss {
                 dy,
                 270,
                 15,
-                7
+                7,
+                'GoliatBoss'
               )
             );
           }
@@ -5334,7 +5392,7 @@ class StaticBarrierHazard extends Entity {
     const distX = localX - closestX;
     const distY = localY - closestY;
     if (distX * distX + distY * distY <= player.radius * player.radius) {
-      player.takeDamage(this.damage, room);
+      player.takeDamage(this.damage, room, { sourceArchetype: 'NemesisBoss' });
     }
   }
 
@@ -5403,7 +5461,8 @@ class GravityZoneHazard extends Entity {
             dy,
             285,
             this.projectileDamage,
-            6.5
+            6.5,
+            'NemesisBoss'
           );
           orb.ringColor = '#c084fc';
           orb.glowColor = 'rgba(192, 132, 252, 0.36)';
@@ -5513,7 +5572,7 @@ class NemesisDarkClone extends Entity {
       if (typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player)) {
         CombatSystem.triggerPerfectDodge(player, room, this.x, this.y);
       } else {
-        player.takeDamage(this.contactDamage, room);
+        player.takeDamage(this.contactDamage, room, { sourceArchetype: 'ShadowReplicaEnemy' });
       }
     }
   }
@@ -5584,7 +5643,7 @@ class NemesisBoss extends Boss {
   onPhaseChange() {
     super.onPhaseChange();
     this.color = '#a21caf';
-    this.speed = this.basePhase1Speed * 1.35;
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.BOSS_WALK_P2, this.basePhase1Speed * 1.35);
     this.orbitCycleTimer = 0;
     this.orbitExpanded = false;
     this.orbitRadius = 72;
@@ -5644,7 +5703,7 @@ class NemesisBoss extends Boss {
         if (typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player)) {
           CombatSystem.triggerPerfectDodge(player, room, shield.x, shield.y);
         } else {
-          player.takeDamage(16, room);
+          player.takeDamage(16, room, { sourceArchetype: 'NemesisBoss' });
         }
       }
     }
@@ -5690,9 +5749,6 @@ class NemesisBoss extends Boss {
 
   computeAIMovement(dt, targetEntity, miracleEffect, room) {
     this.stateTimer -= dt;
-    if (this.invulnerableTimer > 0) {
-      this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
-    }
 
     if (this.phase === 2) {
       this.updateOrbitShields(dt, targetEntity, room);
@@ -5888,7 +5944,7 @@ class PermanentCrackedGroundHazard extends Entity {
   update(dt, player, room) {
     this.pulseTimer += dt * 4;
     if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
-      player.takeDamage(this.damage, room);
+      player.takeDamage(this.damage, room, { sourceArchetype: 'AbismoBoss' });
     }
   }
 
@@ -5933,7 +5989,7 @@ class WormEnemy extends Enemy {
     this.color = '#fb7185';
     this.maxHp = Math.max(20, Math.round(32 * CONFIG.ENEMY_HP_MULTIPLIER * this.ngMult));
     this.hp = this.maxHp;
-    this.speed = Math.min(270, 215 * this.ngSpeedMult);
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.FLYER, 195 * this.ngSpeedMult);
     this.contactDamage = Math.round(12 * this.ngMult);
     this.dropsCoin = false;
     this.explosionRadius = 68;
@@ -5953,7 +6009,7 @@ class WormEnemy extends Enemy {
         player.radius
       )
     ) {
-      player.takeDamage(this.explosionDamage, room);
+      player.takeDamage(this.explosionDamage, room, { sourceArchetype: 'WormEnemy' });
     }
     for (let i = 0; i < 12; i++) {
       const ang = (i * Math.PI * 2) / 12;
@@ -5991,9 +6047,9 @@ class AbismoBoss extends Boss {
     super(x, y, sectionNumber, levelNumber, 'ABISMO, EL DEVORAMUNDOS');
     this.radius = 35;
     this.color = '#854d0e'; // Quitina subterránea en Fase 1
-    this.basePhase1Speed = Math.min(210, 88 * this.ngSpeedMult);
+    this.basePhase1Speed = Math.min(195, 88 * this.ngSpeedMult);
     this.speed = this.basePhase1Speed;
-    this.burrowSpeed = Math.min(290, 235 * this.ngSpeedMult);
+    this.burrowSpeed = Math.min(CONFIG.ENEMY_SPEED_CAPS.ABISMO_BURROW, 225 * this.ngSpeedMult);
     this.contactDamage = Math.round(24 * this.ngMult);
 
     this.isBurrowed = true;
@@ -6013,7 +6069,7 @@ class AbismoBoss extends Boss {
   onPhaseChange() {
     super.onPhaseChange();
     this.color = '#9f1239'; // Carmesí abisal en Fase 2
-    this.burrowSpeed = Math.min(310, 275 * this.ngSpeedMult);
+    this.burrowSpeed = Math.min(CONFIG.ENEMY_SPEED_CAPS.ABISMO_BURROW + 18, 255 * this.ngSpeedMult);
     this.ambushCounter = 0;
     this.isBurrowed = true;
     this.transitionToState('P2_AMBUSH_BURROW', 0.72);
@@ -6081,7 +6137,8 @@ class AbismoBoss extends Boss {
           dy,
           225,
           14,
-          6.5
+          6.5,
+          'AbismoBoss'
         );
         rock.ringColor = '#d97706';
         rock.glowColor = 'rgba(217, 119, 6, 0.34)';
@@ -6548,7 +6605,7 @@ class SerafinBoss extends Boss {
   onPhaseChange() {
     super.onPhaseChange();
     this.color = '#f43f5e';
-    this.speed = this.basePhase1Speed * 1.85;
+    this.speed = Math.min(CONFIG.ENEMY_SPEED_CAPS.BOSS_WALK_P2, this.basePhase1Speed * 1.85);
     this.isGuarding = false;
     this.teleportTarget = null;
     this.setupTriangleComboVertices();
@@ -6573,7 +6630,8 @@ class SerafinBoss extends Boss {
       norm.y,
       580,
       22,
-      8
+      8,
+      'SerafinBoss'
     );
     counterProj.ringColor = '#fde047';
     counterProj.glowColor = 'rgba(250, 204, 21, 0.42)';
@@ -6768,7 +6826,8 @@ class SerafinBoss extends Boss {
               dy,
               265,
               14,
-              6
+              6,
+              'SerafinBoss'
             );
             feather.ringColor = '#fbbf24';
             feather.glowColor = 'rgba(251, 191, 36, 0.32)';
@@ -6922,7 +6981,8 @@ class SerafinBoss extends Boss {
             Math.sin(ang),
             290,
             15,
-            6
+            6,
+            'SerafinBoss'
           );
           feather.ringColor = '#fb7185';
           feather.glowColor = 'rgba(251, 113, 133, 0.34)';
@@ -7187,6 +7247,12 @@ class Player extends Entity {
     this.dodgeCharges = 2;
     this.extraUpgradeChoices = 0;
     this.relicChanceMultiplier = 1.0;
+    const sacrificedCount = this.itemManager && Array.isArray(this.itemManager.ownedRelics)
+      ? this.itemManager.ownedRelics.reduce((acc, r) => acc + (r.level || 1), 0)
+      : 0;
+    if (sacrificedCount > 0 && typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordRelicSacrifice === 'function') {
+      BrotherEye.recordRelicSacrifice(sacrificedCount);
+    }
     this.itemManager.clearAllRelics();
     this.hp = this.maxHp;
     if (this.ui) {
@@ -7328,6 +7394,7 @@ class Player extends Entity {
 
   selectWeapon(indexOrDir) {
     if (!this.weapons || this.weapons.length === 0) return;
+    const prevIdx = this.currentWeaponIndex;
     this.cancelCurrentAttack();
     if (indexOrDir === 'next') {
       this.currentWeaponIndex = (this.currentWeaponIndex + 1) % this.weapons.length;
@@ -7340,6 +7407,18 @@ class Player extends Entity {
       indexOrDir < this.weapons.length
     ) {
       this.currentWeaponIndex = indexOrDir;
+    }
+    if (
+      prevIdx !== this.currentWeaponIndex &&
+      typeof BrotherEye !== 'undefined' &&
+      BrotherEye.enabled &&
+      typeof BrotherEye.recordWeaponSwitch === 'function'
+    ) {
+      BrotherEye.recordWeaponSwitch(
+        prevIdx,
+        this.currentWeaponIndex,
+        this.currentWeapon ? this.currentWeapon.id : null
+      );
     }
     if (this.ui) {
       this.ui.updateStats(this);
@@ -7364,6 +7443,9 @@ class Player extends Entity {
     let rawStep = dps * this.getDefenseMitigationMultiplier() * dt;
     if (rawStep <= 0) return;
 
+    const hpBefore = this.hp;
+    const vitBefore = this.hp + this.shield;
+
     if (this.shield > 0) {
       if (this.shield >= rawStep) {
         this.shield -= rawStep;
@@ -7378,6 +7460,21 @@ class Player extends Entity {
     if (rawStep > 0) {
       this.hp = Math.max(0, this.hp - rawStep);
     }
+
+    const totalDotApplied = Math.max(0, vitBefore - (this.hp + this.shield));
+    if (
+      totalDotApplied > 0 &&
+      typeof BrotherEye !== 'undefined' &&
+      BrotherEye.enabled &&
+      typeof BrotherEye.recordPlayerDamage === 'function'
+    ) {
+      const crossedNearDeath =
+        this.maxHp > 0 &&
+        hpBefore / this.maxHp > 0.22 &&
+        this.hp / this.maxHp <= 0.22;
+      BrotherEye.recordPlayerDamage(totalDotApplied, this.hp, this.maxHp, 'Hazard', crossedNearDeath);
+    }
+
     this.envDotUiAccumulator += dt;
     if (this.envDotUiAccumulator >= 0.14 || this.hp <= 0) {
       this.envDotUiAccumulator = 0;
@@ -7404,6 +7501,9 @@ class Player extends Entity {
       this.itemManager.onDamageTaken(damageContext, room);
     }
 
+    const hpBefore = this.hp;
+    const vitBefore = this.hp + this.shield;
+
     if (this.shield > 0) {
       if (this.shield >= damageContext.amount) {
         this.shield -= damageContext.amount;
@@ -7415,7 +7515,26 @@ class Player extends Entity {
       if (this.ui) this.ui.updateHealth(this);
     }
 
+    const recordEyeDamage = () => {
+      if (isSacrifice) return;
+      const totalApplied = Math.max(0, vitBefore - (this.hp + this.shield));
+      if (
+        totalApplied > 0 &&
+        typeof BrotherEye !== 'undefined' &&
+        BrotherEye.enabled &&
+        typeof BrotherEye.recordPlayerDamage === 'function'
+      ) {
+        const crossedNearDeath =
+          this.maxHp > 0 &&
+          hpBefore / this.maxHp > 0.22 &&
+          this.hp / this.maxHp <= 0.22;
+        const archetype = options.sourceArchetype || (options.isProjectile ? 'ShooterEnemy' : 'Enemy');
+        BrotherEye.recordPlayerDamage(totalApplied, this.hp, this.maxHp, archetype, crossedNearDeath);
+      }
+    };
+
     if (damageContext.amount <= 0) {
+      recordEyeDamage();
       soundManager.playProcedural('hurt');
       if (window.activeGameInstance) {
         window.activeGameInstance.triggerScreenShake(4.0, 0.15);
@@ -7424,6 +7543,7 @@ class Player extends Entity {
     }
 
     this.hp = Math.max(0, this.hp - damageContext.amount);
+    recordEyeDamage();
     this.invulnerableTimer = 0.75;
     soundManager.playProcedural('hurt');
     if (window.activeGameInstance) {
@@ -7778,7 +7898,7 @@ class SpikeTrap extends Entity {
         player &&
         MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)
       ) {
-        player.takeDamage(this.playerDamage, room);
+        player.takeDamage(this.playerDamage, room, { sourceArchetype: 'Hazard' });
       }
 
       // 2. Afecta a TODOS los Enemigos de la sala
@@ -9085,12 +9205,21 @@ class Room {
         (!enemy.invulnerableTimer || enemy.invulnerableTimer <= 0) &&
         MathUtils.circleCollision(player.x, player.y, player.radius, enemy.x, enemy.y, enemy.radius)
       ) {
-        player.takeDamage(enemy.contactDamage, this);
+        player.takeDamage(enemy.contactDamage, this, {
+          sourceArchetype: enemy.constructor ? enemy.constructor.name : 'Enemy',
+        });
       }
 
       if (enemy.markedForDeletion) {
         if (typeof enemy.onDeath === 'function') {
           enemy.onDeath(this, player);
+        }
+
+        if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordEnemyKill === 'function') {
+          BrotherEye.recordEnemyKill(
+            enemy.constructor ? enemy.constructor.name : 'Enemy',
+            enemy instanceof Boss
+          );
         }
 
         if (player && player.itemManager) {
@@ -12545,6 +12674,9 @@ class Game {
       }
 
       this.player.itemManager.onLevelStart();
+      if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.onLevelTransition === 'function') {
+        BrotherEye.onLevelTransition(this.currentSection, this.currentLevel);
+      }
       const eyeSpawnMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)
         ? BrotherEye.getAdaptiveSpawnMultiplier()
         : 1.0;

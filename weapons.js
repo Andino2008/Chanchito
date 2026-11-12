@@ -83,6 +83,12 @@
       weapon.timer = baseCd / atkSpd;
       const effectiveDamage = Math.round(baseDmg * dmgMult);
 
+      if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
+        BrotherEye.recordAction('PROJECTILE', {
+          weaponKey: (weapon && weapon.id ? weapon.id : 'WEAPON') + ':' + (modeCfg.id || 'PROJ')
+        });
+      }
+
       this.playSound(modeCfg.sound);
       this.triggerFeedback(modeCfg.screenShake, modeCfg.hitStop);
 
@@ -200,6 +206,12 @@
         weapon.currentSwingElementLevel = player.getElementLevel(weapon.currentSwingElement);
         weapon.hitEnemies.clear();
         weapon.parriedProjectiles.clear();
+
+        if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
+          BrotherEye.recordAction('MELEE', {
+            weaponKey: (weapon && weapon.id ? weapon.id : 'SWORD') + ':' + (modeCfg.id || 'MELEE')
+          });
+        }
 
         this.playSound(modeCfg.sound);
 
@@ -332,6 +344,11 @@
     },
 
     fireHitscanBeams(weapon, player, room, aimState, modeCfg) {
+      if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
+        BrotherEye.recordAction('BEAM', {
+          weaponKey: (weapon && weapon.id ? weapon.id : 'LASER') + ':' + (modeCfg.id || 'BEAM')
+        });
+      }
       this.playSound(modeCfg.sound);
       this.triggerFeedback(modeCfg.screenShake, modeCfg.hitStop);
 

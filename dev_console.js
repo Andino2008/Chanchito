@@ -22,7 +22,15 @@
  */
 
 (function (root) {
-  var MAX_LOGS = 120;
+  var MAX_LOGS = 500;
+
+  function escapeHtml(str) {
+    return String(str === undefined || str === null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
   var EDITOR_BRUSHES = [
     { symbol: '.', label: '. Piso', desc: 'Piso libre', color: '#1e293b', text: '#94a3b8' },
@@ -247,10 +255,12 @@
       '  font-size: 0.72rem;',
       '  font-weight: 900;',
       '}',
-      '.regime-EQUILIBRIO { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; }',
-      '.regime-ACOMPANAR { background: rgba(250, 204, 21, 0.2); color: #facc15; border: 1px solid #facc15; }',
-      '.regime-PIES { background: rgba(239, 68, 68, 0.28); color: #fca5a5; border: 1px solid #ef4444; }',
-      '.regime-ALIVIO { background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid #4ade80; }',
+      '.regime-EQUILIBRIO, .regime-JUICIO_EQUILIBRADO { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; }',
+      '.regime-ACOMPANAR, .regime-ACUSACION_FISCAL { background: rgba(249, 115, 22, 0.22); color: #fdba74; border: 1px solid #f97316; }',
+      '.regime-PIES, .regime-SENTENCIA_MAXIMA { background: rgba(239, 68, 68, 0.28); color: #fca5a5; border: 1px solid #ef4444; }',
+      '.regime-MALDICION_TRIBUNAL { background: rgba(185, 28, 28, 0.36); color: #fecaca; border: 1px solid #dc2626; }',
+      '.regime-ALIVIO, .regime-CLEMENCIA_DEFENSOR { background: rgba(59, 130, 246, 0.22); color: #93c5fd; border: 1px solid #3b82f6; }',
+      '.regime-BENDICION_DIVINA { background: rgba(74, 222, 128, 0.24); color: #86efac; border: 1px solid #22c55e; }',
       '.dev-log-list {',
       '  display: flex;',
       '  flex-direction: column;',
@@ -423,7 +433,10 @@
       '    <button type="button" class="dev-tab-btn" data-tab="LOGS">📜 LOGS (<span id="dev-tab-err-count">0</span>)</button>',
       '    <button type="button" class="dev-tab-btn" data-tab="TOOLS">🛠️ HERRAMIENTAS</button>',
       '  </div>',
-      '  <button type="button" id="dev-console-close" class="dev-tab-btn" style="border-color:#ef4444;color:#fca5a5;">CERRAR [F2]</button>',
+      '  <div style="display:flex;gap:6px;align-items:center;">',
+      '    <button type="button" id="dev-btn-export-pdf" class="dev-tab-btn" style="border-color:#22c55e;color:#86efac;" title="Exportar todos los logs, Tribunal BrotherEye y Expediente Global como PDF">📄 EXPORTAR PDF</button>',
+      '    <button type="button" id="dev-console-close" class="dev-tab-btn" style="border-color:#ef4444;color:#fca5a5;">CERRAR [F2]</button>',
+      '  </div>',
       '</div>',
       '<div id="dev-console-body" class="dev-console-body"></div>',
       '<form id="dev-cmd-form" class="dev-cmd-row">',
@@ -449,6 +462,13 @@
     this.modal.querySelector('#dev-console-close').addEventListener('click', function () {
       self.toggle(false);
     });
+
+    var exportHeaderBtn = this.modal.querySelector('#dev-btn-export-pdf');
+    if (exportHeaderBtn) {
+      exportHeaderBtn.addEventListener('click', function () {
+        self.exportLogsAsPdf();
+      });
+    }
 
     this.modal.querySelector('#dev-cmd-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -547,8 +567,10 @@
 
     if (typeof BrotherEye !== 'undefined') {
       var s4 = BrotherEye.state4_adaptive;
+      var sm1 = BrotherEye.globalClock || {};
+      var heatTxt = typeof sm1.baseHeatLevel === 'number' ? (' | C:' + sm1.baseHeatLevel.toFixed(0)) : '';
       badge.className = 'dev-console-badge';
-      badge.textContent = 'EYE R=' + s4.performanceR.toFixed(0) + ' (' + s4.regime + ')';
+      badge.textContent = 'TRIBUNAL ' + s4.regime + heatTxt;
     }
   };
 
@@ -569,8 +591,9 @@
         var sum = status.summary;
         self.log(
           'EYE',
-          '[ESTADO 4] R=' + sum.R + ' (Δ=' + (sum.delta >= 0 ? '+' : '') + sum.delta + ') | Régimen: ' + sum.regime +
-          ' | Próx. Sala -> Cant: x' + sum.nextCountMult + ', Daño: x' + sum.nextDamageMult + ', Vel: x' + sum.nextSpeedMult
+          '[TRIBUNAL] Fiscal:' + sum.prosecutorScore + ' vs Defensor:' + sum.defenderScore +
+          ' | Dado d100=' + sum.chaosD100 + ' → ' + sum.regime +
+          ' [Cant x' + sum.nextCountMult + ', HP x' + sum.nextHpMult + ', Dmg x' + sum.nextDamageMult + ', Spd x' + sum.nextSpeedMult + ']'
         );
         self.updateBadge();
       };
@@ -870,6 +893,10 @@
     var body = document.getElementById('dev-console-body');
     if (!body || typeof BrotherEye === 'undefined') return;
 
+    if (typeof BrotherEye.analyzeShortTermPatterns === 'function') {
+      BrotherEye.analyzeShortTermPatterns();
+    }
+
     var st = BrotherEye.getStatus();
     var sm1 = st.stateMinus1_GlobalClock;
     var s0 = st.state0_Initial;
@@ -877,71 +904,135 @@
     var s2 = st.state2_Midpoint;
     var s3 = st.state3_Complete;
     var s4 = st.state4_Adaptive;
+    var mem = st.shortTermMemory || BrotherEye.shortTermMemory || {};
+    var cd = s4.courtDebate || { prosecutorScore: 0, defenderScore: 0, prosecutorReasons: [], defenderReasons: [], debateMargin: 0, heatApplied: 0, rawVerdictScore: 0, effectiveVerdictScore: 0, winner: 'EMPATE' };
 
-    var regimeClass = 'regime-EQUILIBRIO';
-    if (s4.regime === 'ACOMPAÑAR_BUILD') regimeClass = 'regime-ACOMPANAR';
-    else if (s4.regime === 'PIES_EN_LA_TIERRA') regimeClass = 'regime-PIES';
-    else if (s4.regime === 'ALIVIO') regimeClass = 'regime-ALIVIO';
+    var regimeClass = 'regime-' + s4.regime;
+
+    var prosList = (cd.prosecutorReasons && cd.prosecutorReasons.length > 0)
+      ? cd.prosecutorReasons.map(function (r) { return '<div style="font-size:0.68rem;color:#fca5a5;">• ' + r + '</div>'; }).join('')
+      : '<div style="font-size:0.68rem;color:#94a3b8;">Sin cargos graves aún.</div>';
+
+    var defList = (cd.defenderReasons && cd.defenderReasons.length > 0)
+      ? cd.defenderReasons.map(function (r) { return '<div style="font-size:0.68rem;color:#93c5fd;">• ' + r + '</div>'; }).join('')
+      : '<div style="font-size:0.68rem;color:#94a3b8;">Sin objeciones críticas (jugador sano).</div>';
+
+    var act = mem.actions || { projectileShots: 0, beamShots: 0, meleeSwings: 0, parrySuccess: 0, dashes: 0 };
+    var dirs = mem.dodgeDirs || { LEFT: 0, RIGHT: 0, UP: 0, DOWN: 0 };
+    var roomsSince = mem.roomsSinceReset || 0;
+    var resetEvery = mem.resetIntervalRooms || 4;
+    var roomsLeft = Math.max(0, resetEvery - roomsSince);
+
+    var ledger = st.globalLedger || BrotherEye.globalLedger || {};
+    var activeDirectives = st.activeGlobalDirectives || BrotherEye.activeGlobalDirectives || [];
+    var currentRelicsCount = (window.activeGameInstance && window.activeGameInstance.player && window.activeGameInstance.player.itemManager && Array.isArray(window.activeGameInstance.player.itemManager.ownedRelics))
+      ? window.activeGameInstance.player.itemManager.ownedRelics.length
+      : (s3.finalRelics || 0);
+    var directivesPills = activeDirectives.length > 0
+      ? activeDirectives.map(function (d) {
+          var badgeStyle = d.tone === 'DEFENSOR'
+            ? 'background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid #3b82f6;'
+            : (d.tone === 'CAOS'
+                ? 'background:rgba(250,204,21,0.2);color:#fde047;border:1px solid #eab308;'
+                : 'background:rgba(239,68,68,0.22);color:#fca5a5;border:1px solid #ef4444;');
+          return '<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.65rem;font-weight:800;' + badgeStyle + '">' + d.id + '</span>';
+        }).join(' ')
+      : '<span style="font-size:0.68rem;color:#94a3b8;">Ninguna directiva especial activa todavía</span>';
 
     var historyHtml = '';
     if (BrotherEye.roomHistory && BrotherEye.roomHistory.length > 0) {
       var rows = BrotherEye.roomHistory.slice().reverse().slice(0, 6).map(function (h) {
-        return '<div class="eye-kv" style="border-bottom:1px dashed #1e293b;padding:2px 0;">' +
-          '<span>[' + h.globalTime + 's] Sala ' + h.roomType + ' (' + h.roomTime + 's | DTPS: ' + h.dtps + ')</span>' +
-          '<strong>R=' + h.R + ' (Δ=' + (h.delta >= 0 ? '+' : '') + h.delta + ') → ' + h.regime +
-          ' [Cant x' + h.nextModifiers.count + ' | Dmg x' + h.nextModifiers.damage + ' | Spd x' + h.nextModifiers.speed + ']</strong>' +
+        var mod = h.nextModifiers || {};
+        return '<div class="eye-kv" style="border-bottom:1px dashed #1e293b;padding:3px 0;gap:8px;flex-wrap:wrap;">' +
+          '<span>[#' + (h.roomNumber || '?') + ' ' + h.roomType + ' ' + h.roomTime + 's | -' + (h.percentLost !== undefined ? h.percentLost : 0) + '% vit] Fiscal ' + (h.prosecutorScore !== undefined ? h.prosecutorScore : '-') + ' vs Def ' + (h.defenderScore !== undefined ? h.defenderScore : '-') + ' (d100=' + (h.chaosD100 || '-') + ')</span>' +
+          '<strong>' + h.regime + ' [Cant x' + (mod.count || 1) + ' | HP x' + (mod.hp || 1) + ' | Dmg x' + (mod.damage || 1) + ' | Spd x' + (mod.speed || 1) + ']</strong>' +
           '</div>';
       }).join('');
-      historyHtml = '<div class="eye-card" style="grid-column: 1 / -1;"><div class="eye-card-title">📊 HISTORIAL RECIENTE DE HABITACIONES EVALUADAS</div>' + rows + '</div>';
+      historyHtml = '<div class="eye-card" style="grid-column: 1 / -1;"><div class="eye-card-title">📊 HISTORIAL JUDICIAL DE HABITACIONES</div>' + rows + '</div>';
     } else {
-      historyHtml = '<div class="eye-card" style="grid-column: 1 / -1;"><div class="eye-card-title">📊 HISTORIAL RECIENTE DE HABITACIONES EVALUADAS</div><div style="font-size:0.72rem;color:#94a3b8;">Completa una sala con enemigos para ver el primer cálculo adaptativo (Estados 1 → 4).</div></div>';
+      historyHtml = '<div class="eye-card" style="grid-column: 1 / -1;"><div class="eye-card-title">📊 HISTORIAL JUDICIAL DE HABITACIONES</div><div style="font-size:0.72rem;color:#94a3b8;">Completa una sala con enemigos para presenciar el primer debate entre BrotherEye y JusticeEye.</div></div>';
     }
 
     body.innerHTML = [
       '<div class="eye-grid">',
       '  <div class="eye-card">',
-      '    <div class="eye-card-title">⏱️ ESTADO -1 & ESTADO 0 (BASE)</div>',
-      '    <div class="eye-kv"><span>Reloj Global (Estado -1):</span><strong>' + sm1.elapsedSeconds.toFixed(1) + 's (' + (sm1.active ? 'ACTIVO' : 'PAUSADO') + ')</strong></div>',
-      '    <div class="eye-kv"><span>Último Reset Reloj:</span><strong>' + sm1.resetReason + '</strong></div>',
-      '    <div class="eye-kv"><span>Vida/Escudo Inicial (E0):</span><strong>' + s0.maxHp + ' HP + ' + s0.shield + ' Esc</strong></div>',
-      '    <div class="eye-kv"><span>Daño / Proyectiles (E0):</span><strong>x' + s0.damageMultiplier.toFixed(2) + ' / ' + s0.projectiles + ' proy</strong></div>',
-      '    <div class="eye-kv"><span>Reliquias Iniciales (E0):</span><strong>' + s0.totalRelics + '</strong></div>',
+      '    <div class="eye-card-title">⏱️ ESTADOS -1 & 0 (CRÓNICA DE RUN)</div>',
+      '    <div class="eye-kv"><span>Reloj Global (E-1):</span><strong>' + sm1.elapsedSeconds.toFixed(1) + 's (' + (sm1.active ? 'ACTIVO' : 'PAUSADO') + ')</strong></div>',
+      '    <div class="eye-kv"><span>Salas Limpiadas / Jefes:</span><strong>#' + (sm1.roomsClearedCount || 0) + ' salas | ' + (sm1.bossesKilledCount || 0) + ' jefes</strong></div>',
+      '    <div class="eye-kv"><span>Muertes en Sesión:</span><strong style="color:#f87171;">' + (sm1.deathsCount || 0) + '</strong></div>',
+      '    <div class="eye-kv"><span>Calor Judicial Acumulado:</span><strong style="color:#fb923c;">' + (sm1.baseHeatLevel || 0).toFixed(1) + ' / 100</strong></div>',
+      '    <div class="eye-kv"><span>Base Inicial (E0):</span><strong>' + Math.round(s0.maxHp) + ' HP + ' + Math.round(s0.shield) + ' Esc | ' + s0.totalRelics + ' Rel</strong></div>',
       '  </div>',
 
       '  <div class="eye-card">',
-      '    <div class="eye-card-title">🚪 ESTADO 1 (ENTRADA) & ESTADO 2 (50%)</div>',
-      '    <div class="eye-kv"><span>Sala Actual / 2do Reloj:</span><strong>' + s1.roomType + ' | ' + s1.roomClockSeconds.toFixed(1) + 's</strong></div>',
-      '    <div class="eye-kv"><span>Vida Entrada / Enemigos:</span><strong>' + s1.entryVitality + ' Vit | ' + s1.totalEnemiesInitial + ' Enem.</strong></div>',
+      '    <div class="eye-card-title">🚪 ESTADOS 1 & 2 (SALA ACTUAL / 50%)</div>',
+      '    <div class="eye-kv"><span>Sala Actual / Reloj Sala:</span><strong>' + s1.roomType + ' | ' + s1.roomClockSeconds.toFixed(1) + 's</strong></div>',
+      '    <div class="eye-kv"><span>Entrada: Vit / Enem / DPS:</span><strong>' + Math.round(s1.entryVitality) + ' | ' + s1.totalEnemiesInitial + ' | x' + (s1.entryDpsPower || 1).toFixed(1) + '</strong></div>',
       '    <div class="eye-kv"><span>Midpoint (50% Muertos):</span><strong>' + (s2.triggered ? ('SÍ (' + s2.timeElapsedFirstHalf.toFixed(1) + 's)') : 'Pendiente') + '</strong></div>',
-      '    <div class="eye-kv"><span>Vida Perdida al 50%:</span><strong>-' + s2.hpLostFirstHalf + ' HP (DTPS: ' + s2.dtpsFirstHalf.toFixed(2) + ')</strong></div>',
-      '    <div class="eye-kv"><span>Nuevas Reliquias en Sala:</span><strong>+' + s2.newRelicsAcquiredMid + '</strong></div>',
+      '    <div class="eye-kv"><span>Vitalidad Perdida al 50%:</span><strong>-' + Math.round(s2.hpLostFirstHalf) + ' HP (' + ((s2.percentLostFirstHalf || 0) * 100).toFixed(1) + '%)</strong></div>',
+      '    <div class="eye-kv"><span>KPS 1ra Mitad:</span><strong>' + s2.kpsFirstHalf.toFixed(2) + ' enem/s</strong></div>',
       '  </div>',
 
       '  <div class="eye-card">',
-      '    <div class="eye-card-title">🏁 ESTADO 3 (FINAL DE SALA & DTPS)</div>',
-      '    <div class="eye-kv"><span>Última Sala Completada:</span><strong>' + (s3.completed ? 'SÍ' : 'En curso') + ' (' + s3.totalTimeEmployed.toFixed(2) + 's)</strong></div>',
-      '    <div class="eye-kv"><span>Daño Total Recibido:</span><strong>' + s3.totalDamageTaken + ' HP</strong></div>',
-      '    <div class="eye-kv"><span>DTPS (Daño / Segundo):</span><strong style="color:#facc15;">' + s3.dtpsTotal.toFixed(2) + ' HP/s</strong></div>',
-      '    <div class="eye-kv"><span>Velocidad KPS (1ra vs 2da):</span><strong>' + s2.kpsFirstHalf.toFixed(2) + ' vs ' + s3.kpsSecondHalf.toFixed(2) + '/s</strong></div>',
+      '    <div class="eye-card-title">🏁 ESTADO 3 (ACTA FORENSE FINAL)</div>',
+      '    <div class="eye-kv"><span>Última Sala:</span><strong>' + (s3.completed ? 'SÍ' : 'En curso') + ' (' + s3.totalTimeEmployed.toFixed(2) + 's)</strong></div>',
+      '    <div class="eye-kv"><span>Daño / % Tanque Perdido:</span><strong>-' + Math.round(s3.totalDamageTaken) + ' HP (' + ((s3.percentVitalityLost || 0) * 100).toFixed(1) + '%)</strong></div>',
+      '    <div class="eye-kv"><span>DTPS / KPS Total:</span><strong style="color:#facc15;">' + s3.dtpsTotal.toFixed(2) + '/s | ' + s3.kpsTotal.toFixed(2) + ' k/s</strong></div>',
       '    <div class="eye-kv"><span>Ratio Ritmo (Slowdown):</span><strong>x' + s3.combatSlowdownRatio.toFixed(2) + '</strong></div>',
+      '    <div class="eye-kv"><span>DPS Potencial Snapshot:</span><strong>x' + (s3.potentialDpsSnapshot || 1).toFixed(2) + '</strong></div>',
       '  </div>',
 
-      '  <div class="eye-card" style="grid-column: span 2;">',
-      '    <div class="eye-card-title">🧮 ESTADO 4: ECUACIÓN R = 0.30S + 0.20P + 0.20V + 0.20E + 0.10G</div>',
-      '    <div class="eye-kv"><span>S (Supervivencia 30%): <strong>' + s4.indicators.S_survival + '</strong></span><span>P (Potencia 20%): <strong>' + s4.indicators.P_power + '</strong></span><span>V (Velocidad 20%): <strong>' + s4.indicators.V_speed + '</strong></span></div>',
-      '    <div class="eye-kv"><span>E (Eficiencia DTPS 20%): <strong>' + s4.indicators.E_efficiency + '</strong></span><span>G (Progresión 10%): <strong>' + s4.indicators.G_progression + '</strong></span><span>Dados [Min/Max]: <strong>' + s4.diceStats.minPoint + ' / ' + s4.diceStats.maxPoint + '</strong></span></div>',
-      '    <div class="eye-kv" style="margin-top:4px;padding-top:4px;border-top:1px solid #1e293b;">',
-      '      <span>Rendimiento Calculado: <strong style="color:#38bdf8;font-size:0.85rem;">R = ' + s4.performanceR + '</strong> (Esperado: ' + s4.expectedR + ' | Δ = ' + (s4.delta >= 0 ? '+' : '') + s4.delta + ')</span>',
-      '      <span>Dado Ruido: <strong>' + s4.diceStats.noiseRoll + '</strong> | Racha Dios: <strong>' + s4.godStreak + ' salas</strong></span>',
+      '  <div class="eye-card" style="border-color: rgba(239, 68, 68, 0.45);">',
+      '    <div class="eye-card-title" style="color:#f87171;">🔴 BROTHER EYE (EL FISCAL SÁDICO)</div>',
+      '    <div class="eye-kv"><span>Acusación Total:</span><strong style="color:#f87171;font-size:0.85rem;">' + cd.prosecutorScore + ' pts</strong></div>',
+      '    <div class="eye-kv"><span>Calor Aplicado (+Run):</span><strong>+' + cd.heatApplied + ' pts</strong></div>',
+      '    <div style="margin-top:4px;border-top:1px solid #1e293b;padding-top:4px;">' + prosList + '</div>',
+      '  </div>',
+
+      '  <div class="eye-card" style="border-color: rgba(59, 130, 246, 0.45);">',
+      '    <div class="eye-card-title" style="color:#60a5fa;">🔵 JUSTICE EYE (ABOGADO DEFENSOR)</div>',
+      '    <div class="eye-kv"><span>Defensa / Clemencia:</span><strong style="color:#60a5fa;font-size:0.85rem;">' + cd.defenderScore + ' pts</strong></div>',
+      '    <div class="eye-kv"><span>Margen Debate (F - D):</span><strong>' + (cd.debateMargin >= 0 ? '+' : '') + cd.debateMargin + '</strong></div>',
+      '    <div style="margin-top:4px;border-top:1px solid #1e293b;padding-top:4px;">' + defList + '</div>',
+      '  </div>',
+
+      '  <div class="eye-card" style="border-color: rgba(250, 204, 21, 0.45);">',
+      '    <div class="eye-card-title" style="color:#facc15;">🎲 DADOS DEL CAOS & VEREDICTO</div>',
+      '    <div class="eye-kv"><span>Sentencia Activa:</span><span class="eye-regime-pill ' + regimeClass + '">' + s4.regime + '</span></div>',
+      '    <div class="eye-kv"><span>Dado d100 / Turbulencia:</span><strong>' + (s4.diceStats.chaosD100 || 50) + '/100 | x' + (s4.diceStats.turbulenceMult || 1).toFixed(2) + '</strong></div>',
+      '    <div class="eye-kv"><span>Cant / HP Enemigos:</span><strong>x' + s4.nextRoomModifiers.enemyCountMultiplier + ' | HP x' + (s4.nextRoomModifiers.enemyHpMultiplier || 1) + '</strong></div>',
+      '    <div class="eye-kv"><span>Daño / Vel / Élite+:</span><strong>x' + s4.nextRoomModifiers.enemyDamageMultiplier + ' | x' + s4.nextRoomModifiers.enemySpeedMultiplier + ' | ' + Math.round((s4.nextRoomModifiers.elitePromotionChance || 0) * 100) + '%</strong></div>',
+      '    <div class="eye-kv"><span>Bono Corazones / R(v2):</span><strong>+' + Math.round((s4.nextRoomModifiers.heartDropBonus || 0) * 100) + '% | R=' + s4.performanceR + '</strong></div>',
+      '  </div>',
+
+      '  <div class="eye-card" style="grid-column: 1 / -1; border-color: rgba(192, 132, 252, 0.4);">',
+      '    <div class="eye-card-title" style="color:#c084fc;">🧠 MEMORIA A CORTO PLAZO — PATRONES (Borrón en ' + roomsLeft + ' sala(s) o al cambiar de nivel)</div>',
+      '    <div class="eye-kv" style="flex-wrap:wrap;gap:10px;">',
+      '      <span>Ciclo Ventana: <strong>' + roomsSince + ' / ' + resetEvery + ' salas</strong> (Último reset: ' + (mem.lastResetReason || 'INIT') + ')</span>',
+      '      <span>Ofensiva: <strong>Proy:' + act.projectileShots + ' | Rayo:' + act.beamShots + ' | Melee:' + act.meleeSwings + ' | Parry:' + act.parrySuccess + '</strong></span>',
+      '      <span>Dash (' + act.dashes + '): <strong>I:' + dirs.LEFT + ' D:' + dirs.RIGHT + ' Ar:' + dirs.UP + ' Ab:' + dirs.DOWN + '</strong></span>',
+      '    </div>',
+      '    <div class="eye-kv" style="margin-top:3px;border-top:1px dashed #334155;padding-top:4px;flex-wrap:wrap;gap:8px;">',
+      '      <span>Patrón Detectado: <strong style="color:#e879f9;">' + (mem.dominantPatternLabel || 'ESTILO VARIADO') + '</strong></span>',
+      '      <span>Contramedida IA: <strong style="color:#38bdf8;">' + (mem.countermeasurePlan || 'Ninguna') + '</strong></span>',
       '    </div>',
       '  </div>',
-
-      '  <div class="eye-card">',
-      '    <div class="eye-card-title">⚡ PRÓXIMA SALA (MODIFICADORES)</div>',
-      '    <div class="eye-kv"><span>Régimen Activo:</span><span class="eye-regime-pill ' + regimeClass + '">' + s4.regime + '</span></div>',
-      '    <div class="eye-kv"><span>Cantidad Enemigos:</span><strong>x' + s4.nextRoomModifiers.enemyCountMultiplier + '</strong></div>',
-      '    <div class="eye-kv"><span>Daño Enemigos:</span><strong>x' + s4.nextRoomModifiers.enemyDamageMultiplier + '</strong></div>',
-      '    <div class="eye-kv"><span>Velocidad Enemigos:</span><strong>x' + s4.nextRoomModifiers.enemySpeedMultiplier + '</strong></div>',
+      '  <div class="eye-card" style="grid-column: 1 / -1; border-color: rgba(56, 189, 248, 0.42);">',
+      '    <div class="eye-card-title" style="color:#38bdf8;">📜 EXPEDIENTE GLOBAL DEL JUGADOR (LARGO PLAZO — RUN + NG+' + (ledger.ngPlusCyclesCarried || 0) + ')</div>',
+      '    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px 12px;font-size:0.70rem;">',
+      '      <div class="eye-kv"><span>Cambios Arma:</span><strong>' + (ledger.weaponSwitchCount || 0) + '</strong></div>',
+      '      <div class="eye-kv"><span>Daño Total Run:</span><strong style="color:#f87171;">' + Math.round(ledger.totalDamageReceived || 0) + ' HP</strong></div>',
+      '      <div class="eye-kv"><span>Enemigos Abatidos:</span><strong style="color:#4ade80;">' + (ledger.totalEnemiesKilled || 0) + '</strong></div>',
+      '      <div class="eye-kv"><span>Al Límite (<=22%):</span><strong style="color:#fbbf24;">' + (ledger.nearDeathCount || 0) + ' vec.</strong></div>',
+      '      <div class="eye-kv"><span>Prom. Salas:</span><strong>' + (ledger.avgRoomClearTime ? ledger.avgRoomClearTime + 's' : '-') + '</strong></div>',
+      '      <div class="eye-kv"><span>Prom. Jefes:</span><strong>' + (ledger.avgBossKillTime ? ledger.avgBossKillTime + 's' : '-') + '</strong></div>',
+      '      <div class="eye-kv"><span>Reliquias Hist.:</span><strong style="color:#c084fc;">' + (ledger.totalRelicsEverGained || 0) + ' (Act:' + currentRelicsCount + ')</strong></div>',
+      '      <div class="eye-kv"><span>Dashes / Perf.:</span><strong>' + (ledger.totalDashesUsed || 0) + ' / ' + (ledger.totalPerfectDodges || 0) + '</strong></div>',
+      '    </div>',
+      '    <div class="eye-kv" style="margin-top:4px;border-top:1px dashed #334155;padding-top:4px;flex-wrap:wrap;gap:8px;align-items:center;">',
+      '      <span>Némesis Personal: <strong style="color:#fb7185;">' + (ledger.nemesisArchetype || 'Sin Némesis aún') + '</strong></span>',
+      '      <span style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">Directivas: ' + directivesPills + '</span>',
+      '    </div>',
       '  </div>',
       historyHtml,
       '</div>'
@@ -949,23 +1040,37 @@
   };
 
   InGameDevConsole.prototype.renderLogsTab = function () {
+    var self = this;
     var body = document.getElementById('dev-console-body');
     if (!body) return;
 
+    var toolbarHtml = [
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">',
+      '  <span style="font-size:0.72rem;color:#94a3b8;">Total registros en sesión: <strong style="color:#f8fafc;">' + this.logs.length + '</strong> (Salas evaluadas: <strong style="color:#38bdf8;">' + ((typeof BrotherEye !== 'undefined' && BrotherEye.roomHistory) ? BrotherEye.roomHistory.length : 0) + '</strong>)</span>',
+      '  <button type="button" id="dev-logs-export-pdf-btn" class="dev-tab-btn" style="border-color:#22c55e;color:#86efac;">📄 EXPORTAR LOGS ENTEROS COMO PDF</button>',
+      '</div>'
+    ].join('\n');
+
     if (this.logs.length === 0) {
-      body.innerHTML = '<div style="color:#94a3b8;font-size:0.75rem;">Sin registros todavía.</div>';
-      return;
+      body.innerHTML = toolbarHtml + '<div style="color:#94a3b8;font-size:0.75rem;">Sin registros todavía (puedes exportar igualmente el estado actual de BrotherEye como PDF).</div>';
+    } else {
+      var itemsHtml = this.logs.map(function (item) {
+        return '<div class="dev-log-item ' + item.level + '">' +
+          '<span style="color:#64748b;">[' + escapeHtml(item.time) + ']</span> ' +
+          '<strong>[' + escapeHtml(item.level) + ']</strong> ' +
+          escapeHtml(item.text) +
+          '</div>';
+      }).join('');
+
+      body.innerHTML = toolbarHtml + '<div class="dev-log-list">' + itemsHtml + '</div>';
     }
 
-    var itemsHtml = this.logs.map(function (item) {
-      return '<div class="dev-log-item ' + item.level + '">' +
-        '<span style="color:#64748b;">[' + item.time + ']</span> ' +
-        '<strong>[' + item.level + ']</strong> ' +
-        item.text +
-        '</div>';
-    }).join('');
-
-    body.innerHTML = '<div class="dev-log-list">' + itemsHtml + '</div>';
+    var btnExport = document.getElementById('dev-logs-export-pdf-btn');
+    if (btnExport) {
+      btnExport.addEventListener('click', function () {
+        self.exportLogsAsPdf();
+      });
+    }
   };
 
   InGameDevConsole.prototype.renderToolsTab = function () {
@@ -1006,12 +1111,20 @@
       '    <small>Diseña tus propias secciones con rocas, fosos, trampas y enemigos, y pruébalas en vivo.</small>',
       '  </button>',
       '  <button type="button" class="dev-tool-btn" data-action="FORCE_SPIKE">',
-      '    <span>⚡ FORZAR SALA "PIES EN LA TIERRA"</span>',
-      '    <small>Configura BrotherEye en modo Subidón (+55% enemigos, +42% daño, +15% velocidad) para la próxima sala.</small>',
+      '    <span>🔥 FORZAR "SENTENCIA MÁXIMA" (FISCAL)</span>',
+      '    <small>Dicta Sentencia Máxima del Tribunal (Cant x2.10, HP Enemigo x2.60, Daño x1.65, Élites +30%).</small>',
       '  </button>',
-      '  <button type="button" class="dev-tool-btn" data-action="FORCE_ACCOMPANY">',
-      '    <span>🔥 FORZAR MODO "ACOMPAÑAR BUILD"</span>',
-      '    <small>Configura BrotherEye para acompañar una build fuerte (+30% cantidad de enemigos) en la próxima sala.</small>',
+      '  <button type="button" class="dev-tool-btn" data-action="FORCE_CURSE">',
+      '    <span>💀 FORZAR "MALDICIÓN DEL TRIBUNAL"</span>',
+      '    <small>Simula el crítico sádico de los Dados del Caos para la próxima sala.</small>',
+      '  </button>',
+      '  <button type="button" class="dev-tool-btn" data-action="FORCE_BLESSING">',
+      '    <span>✨ FORZAR "BENDICIÓN DIVINA"</span>',
+      '    <small>Simula el crítico benigno de los Dados del Caos (tregua +25% drops de corazón).</small>',
+      '  </button>',
+      '  <button type="button" class="dev-tool-btn" data-action="RESET_SHORT_MEMORY">',
+      '    <span>🧠 LIMPIAR MEMORIA A CORTO PLAZO</span>',
+      '    <small>Fuerza borrón y cuenta nueva de los patrones tácticos registrados.</small>',
       '  </button>',
       '  <button type="button" class="dev-tool-btn" data-action="ADAPT_CURRENT_ROOM">',
       '    <span>👁️ APLICAR DIFICULTAD A ESTA SALA AHORA</span>',
@@ -1020,6 +1133,10 @@
       '  <button type="button" class="dev-tool-btn" data-action="GRANT_METEOR_BUILD">',
       '    <span>🌋 PROBAR BUILD METEORITOS (STRESS TEST)</span>',
       '    <small>Otorga Fuego Nvl 3 + Pólvora Inestable + +3 Proyectiles para verificar que no se congele la sala.</small>',
+      '  </button>',
+      '  <button type="button" class="dev-tool-btn" data-action="EXPORT_PDF" style="border-color:rgba(34,197,94,0.55);">',
+      '    <span style="color:#86efac;">📄 EXPORTAR LOGS ENTEROS A PDF</span>',
+      '    <small>Genera reporte completo (BrotherEye, Fiscal/Defensor, Expediente Global, todas las salas y consola).</small>',
       '  </button>',
       '</div>',
       weaponCardsHtml
@@ -1054,6 +1171,10 @@
       this.setTab('LEVEL_EDITOR');
       return;
     }
+    if (action === 'EXPORT_PDF') {
+      this.exportLogsAsPdf();
+      return;
+    }
 
     var game = window.activeGameInstance;
     if (!game || !game.player || !game.currentRoom) {
@@ -1081,27 +1202,53 @@
 
     } else if (action === 'FORCE_SPIKE') {
       if (typeof BrotherEye !== 'undefined') {
-        BrotherEye.state4_adaptive.regime = 'PIES_EN_LA_TIERRA';
-        BrotherEye.state4_adaptive.performanceR = 92.0;
-        BrotherEye.state4_adaptive.delta = 27.0;
-        BrotherEye.state4_adaptive.nextRoomModifiers.enemyCountMultiplier = 1.55;
-        BrotherEye.state4_adaptive.nextRoomModifiers.enemyDamageMultiplier = 1.42;
-        BrotherEye.state4_adaptive.nextRoomModifiers.enemySpeedMultiplier = 1.15;
+        BrotherEye.state4_adaptive.regime = 'SENTENCIA_MAXIMA';
+        BrotherEye.state4_adaptive.performanceR = 94.0;
+        BrotherEye.state4_adaptive.delta = 29.0;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyCountMultiplier = 2.10;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyHpMultiplier = 2.60;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyDamageMultiplier = 1.65;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemySpeedMultiplier = 1.22;
+        BrotherEye.state4_adaptive.nextRoomModifiers.elitePromotionChance = 0.30;
         this.updateBadge();
-        this.log('EYE', 'Subidón "PIES EN LA TIERRA" armado para la próxima sala (Cant x1.55, Daño x1.42, Vel x1.15).');
-        if (game.ui) game.ui.showToast('👁️ Subidón "Pies en la Tierra" preparado para la próxima sala');
+        this.log('EYE', 'Sentencia Máxima armada (Cant x2.10, HP x2.60, Daño x1.65, Élites 30%).');
+        if (game.ui) game.ui.showToast('🔥 Sentencia Máxima del Tribunal preparada para la próxima sala');
       }
 
-    } else if (action === 'FORCE_ACCOMPANY') {
+    } else if (action === 'FORCE_CURSE') {
       if (typeof BrotherEye !== 'undefined') {
-        BrotherEye.state4_adaptive.regime = 'ACOMPAÑAR_BUILD';
-        BrotherEye.state4_adaptive.performanceR = 84.0;
-        BrotherEye.state4_adaptive.delta = 19.0;
-        BrotherEye.state4_adaptive.nextRoomModifiers.enemyCountMultiplier = 1.30;
-        BrotherEye.state4_adaptive.nextRoomModifiers.enemyDamageMultiplier = 1.15;
-        BrotherEye.state4_adaptive.nextRoomModifiers.enemySpeedMultiplier = 1.08;
+        BrotherEye.state4_adaptive.regime = 'MALDICION_TRIBUNAL';
+        BrotherEye.state4_adaptive.diceStats.chaosD100 = 98;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyCountMultiplier = 2.40;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyHpMultiplier = 2.75;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyDamageMultiplier = 1.80;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemySpeedMultiplier = 1.26;
+        BrotherEye.state4_adaptive.nextRoomModifiers.elitePromotionChance = 0.32;
         this.updateBadge();
-        this.log('EYE', 'Modo "ACOMPAÑAR_BUILD" armado para la próxima sala (Cant x1.30, Daño x1.15, Vel x1.08).');
+        this.log('EYE', 'Maldición del Tribunal armada para la próxima sala.');
+        if (game.ui) game.ui.showToast('💀 Maldición del Tribunal armada para la próxima sala');
+      }
+
+    } else if (action === 'FORCE_BLESSING') {
+      if (typeof BrotherEye !== 'undefined') {
+        BrotherEye.state4_adaptive.regime = 'BENDICION_DIVINA';
+        BrotherEye.state4_adaptive.diceStats.chaosD100 = 4;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyCountMultiplier = 0.72;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyHpMultiplier = 0.85;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemyDamageMultiplier = 0.75;
+        BrotherEye.state4_adaptive.nextRoomModifiers.enemySpeedMultiplier = 0.90;
+        BrotherEye.state4_adaptive.nextRoomModifiers.elitePromotionChance = 0.0;
+        BrotherEye.state4_adaptive.nextRoomModifiers.heartDropBonus = 0.25;
+        this.updateBadge();
+        this.log('EYE', 'Bendición Divina armada para la próxima sala (+25% corazones).');
+        if (game.ui) game.ui.showToast('✨ Bendición Divina armada para la próxima sala');
+      }
+
+    } else if (action === 'RESET_SHORT_MEMORY') {
+      if (typeof BrotherEye !== 'undefined' && typeof BrotherEye.resetShortTermMemory === 'function') {
+        BrotherEye.resetShortTermMemory('MANUAL_CONSOLE');
+        this.log('EYE', 'Memoria a corto plazo borrada manualmente (borrón y cuenta nueva).');
+        if (game.ui) game.ui.showToast('🧠 Memoria táctica de BrotherEye reiniciada');
       }
 
     } else if (action === 'ADAPT_CURRENT_ROOM') {
@@ -1151,6 +1298,221 @@
       this.log('ERROR', 'Error al ejecutar comando: ' + err.message);
     }
     this.setTab('LOGS');
+  };
+
+  InGameDevConsole.prototype.buildFullReportHtml = function () {
+    var now = new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    var dateStamp = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' +
+      pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+    var game = window.activeGameInstance;
+    var p = game && game.player ? game.player : null;
+    var r = game && game.currentRoom ? game.currentRoom : null;
+
+    var st = (typeof BrotherEye !== 'undefined' && typeof BrotherEye.getStatus === 'function')
+      ? BrotherEye.getStatus()
+      : null;
+    var sm1 = (st && st.stateMinus1_GlobalClock) || {};
+    var s0 = (st && st.state0_Initial) || {};
+    var s1 = (st && st.state1_Enter) || {};
+    var s3 = (st && st.state3_Complete) || {};
+    var s4 = (st && st.state4_Adaptive) || {};
+    var cd = s4.courtDebate || {};
+    var ds = s4.diceStats || {};
+    var mod = s4.nextRoomModifiers || {};
+    var mem = (st && st.shortTermMemory) || {};
+    var ledger = (st && st.globalLedger) || {};
+    var directives = (st && st.activeGlobalDirectives) || [];
+    var history = (typeof BrotherEye !== 'undefined' && Array.isArray(BrotherEye.roomHistory))
+      ? BrotherEye.roomHistory
+      : [];
+
+    var relicsStr = 'Ninguna';
+    if (p && p.itemManager && Array.isArray(p.itemManager.ownedRelics) && p.itemManager.ownedRelics.length > 0) {
+      relicsStr = p.itemManager.ownedRelics.map(function (rel) {
+        return escapeHtml(rel.name || rel.id) + (rel.level > 1 ? ' (Nv.' + rel.level + ')' : '');
+      }).join(', ');
+    }
+
+    var weaponsStr = 'N/A';
+    if (p && Array.isArray(p.weapons)) {
+      weaponsStr = p.weapons.map(function (w, idx) {
+        var mark = idx === p.currentWeaponIndex ? '★ ' : '';
+        return mark + escapeHtml(w.name || w.id || ('Slot ' + (idx + 1)));
+      }).join(' | ');
+    }
+
+    var nemesisTable = 'Sin daño registrado';
+    if (ledger.nemesisByArchetype && Object.keys(ledger.nemesisByArchetype).length > 0) {
+      nemesisTable = Object.keys(ledger.nemesisByArchetype).map(function (k) {
+        return escapeHtml(k) + ': ' + ledger.nemesisByArchetype[k] + ' pts';
+      }).join(' | ');
+    }
+
+    var historyRowsHtml = history.length > 0
+      ? history.map(function (h) {
+          var m = h.nextModifiers || {};
+          var dirsList = Array.isArray(h.directives) && h.directives.length > 0 ? h.directives.join(', ') : '-';
+          return '<tr>' +
+            '<td>#' + escapeHtml(h.roomNumber) + '</td>' +
+            '<td>' + escapeHtml(h.roomType) + '</td>' +
+            '<td>' + escapeHtml(h.globalTime) + 's</td>' +
+            '<td>' + escapeHtml(h.roomTime) + 's</td>' +
+            '<td>-' + escapeHtml(h.percentLost) + '%</td>' +
+            '<td>' + escapeHtml(h.prosecutorScore) + ' vs ' + escapeHtml(h.defenderScore) + '</td>' +
+            '<td>' + escapeHtml(h.chaosD100) + '</td>' +
+            '<td><strong>' + escapeHtml(h.regime) + '</strong></td>' +
+            '<td>x' + escapeHtml(m.count) + ' / HP x' + escapeHtml(m.hp) + ' / Dmg x' + escapeHtml(m.damage) + ' / Spd x' + escapeHtml(m.speed) + '</td>' +
+            '<td>' + escapeHtml(dirsList) + ' | ' + escapeHtml(h.memoryNote || '') + '</td>' +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="10">Sin habitaciones evaluadas en esta sesión todavía.</td></tr>';
+
+    var chronoLogs = this.logs.slice().reverse();
+    var logsRowsHtml = chronoLogs.length > 0
+      ? chronoLogs.map(function (l) {
+          var cls = l.level === 'ERROR' ? 'err' : (l.level === 'WARN' ? 'warn' : (l.level === 'EYE' ? 'eye' : ''));
+          return '<tr class="' + cls + '">' +
+            '<td>' + escapeHtml(l.time) + '</td>' +
+            '<td><strong>' + escapeHtml(l.level) + '</strong></td>' +
+            '<td>' + escapeHtml(l.text) + '</td>' +
+          '</tr>';
+        }).join('')
+      : '<tr><td colspan="3">Sin entradas en el log de consola.</td></tr>';
+
+    var activeDirectivesStr = directives.length > 0
+      ? directives.map(function (d) { return escapeHtml(d.id); }).join(', ')
+      : 'Ninguna';
+
+    var playerSummary = p
+      ? ('HP ' + Math.round(p.hp) + '/' + Math.round(p.maxHp) + ' | Escudo ' + Math.round(p.shield || 0) +
+         ' | Oro ' + (p.coins || 0) + ' | Llaves ' + (p.keys || 0) +
+         ' | Dmg x' + (p.damageMultiplier || 1).toFixed(2) + ' | VelAtq x' + (p.attackSpeedMultiplier || 1).toFixed(2) +
+         ' | Proy +' + (p.extraProjectiles || 0))
+      : 'Partida no iniciada en runtime';
+
+    var locationSummary = game
+      ? ('Sección ' + game.currentSection + ' - Nivel ' + game.currentLevel + ' | Sala: ' + (r ? (r.type + ' (' + (r.templateName || r.layoutType || 'proc') + ')') : 'N/A'))
+      : 'N/A';
+
+    return [
+      '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">',
+      '<title>BrotherEye Logs ' + escapeHtml(dateStamp) + '</title>',
+      '<style>',
+      '  @page { size: A4 portrait; margin: 11mm; }',
+      '  * { box-sizing: border-box; }',
+      '  body { font-family: Consolas, "Courier New", monospace; color: #0f172a; background: #fff; font-size: 10.5px; line-height: 1.38; margin: 0; padding: 14px; }',
+      '  h1 { font-size: 16px; margin: 0 0 4px; color: #0f172a; border-bottom: 2px solid #0284c7; padding-bottom: 4px; }',
+      '  h2 { font-size: 12px; margin: 12px 0 5px; color: #0369a1; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; page-break-after: avoid; }',
+      '  .meta { font-size: 10px; color: #475569; margin-bottom: 8px; }',
+      '  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }',
+      '  .box { border: 1px solid #cbd5e1; border-radius: 5px; padding: 7px 9px; background: #f8fafc; page-break-inside: avoid; }',
+      '  .kv { margin: 2px 0; }',
+      '  table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 9.5px; }',
+      '  th, td { border: 1px solid #cbd5e1; padding: 3px 5px; text-align: left; vertical-align: top; word-break: break-word; }',
+      '  th { background: #e2e8f0; color: #0f172a; font-weight: bold; }',
+      '  tr { page-break-inside: avoid; }',
+      '  tr.err td { background: #fee2e2; color: #991b1b; }',
+      '  tr.warn td { background: #fef9c3; color: #854d0e; }',
+      '  tr.eye td { background: #f3e8ff; color: #581c87; }',
+      '  ul { margin: 3px 0 0 16px; padding: 0; }',
+      '</style></head><body>',
+      '<h1>👁️ REPORTE COMPLETO DE TELEMETRÍA Y LOGS — BROTHER EYE</h1>',
+      '<div class="meta"><strong>Generado:</strong> ' + escapeHtml(dateStamp) + ' | <strong>Motor:</strong> ' + escapeHtml(st ? st.version : 'N/A') + ' | <strong>Origen:</strong> ' + escapeHtml(window.location.href) + '</div>',
+      '<div class="box">',
+      '  <div class="kv"><strong>Ubicación:</strong> ' + escapeHtml(locationSummary) + '</div>',
+      '  <div class="kv"><strong>Jugador:</strong> ' + escapeHtml(playerSummary) + '</div>',
+      '  <div class="kv"><strong>Armas:</strong> ' + weaponsStr + '</div>',
+      '  <div class="kv"><strong>Reliquias:</strong> ' + relicsStr + '</div>',
+      '</div>',
+      '<h2>1. TRIBUNAL JUDICIAL (ESTADOS -1 AL 4) & MEMORIA A CORTO PLAZO</h2>',
+      '<div class="grid2">',
+      '  <div class="box">',
+      '    <div class="kv"><strong>Reloj Global (E-1):</strong> ' + escapeHtml(typeof sm1.elapsedSeconds === 'number' ? sm1.elapsedSeconds.toFixed(1) : 0) + 's | Salas: #' + escapeHtml(sm1.roomsClearedCount || 0) + ' | Jefes: ' + escapeHtml(sm1.bossesKilledCount || 0) + ' | Muertes: ' + escapeHtml(sm1.deathsCount || 0) + '</div>',
+      '    <div class="kv"><strong>Calor Judicial:</strong> ' + escapeHtml(typeof sm1.baseHeatLevel === 'number' ? sm1.baseHeatLevel.toFixed(1) : 0) + ' / 100 | <strong>Base E0:</strong> ' + escapeHtml(Math.round(s0.maxHp || 0)) + ' HP + ' + escapeHtml(Math.round(s0.shield || 0)) + ' Esc</div>',
+      '    <div class="kv"><strong>Sala Actual (E1/E3):</strong> ' + escapeHtml(s1.roomType || '-') + ' | Reloj Sala: ' + escapeHtml(typeof s1.roomClockSeconds === 'number' ? s1.roomClockSeconds.toFixed(1) : 0) + 's | Tiempo Última: ' + escapeHtml(typeof s3.totalTimeEmployed === 'number' ? s3.totalTimeEmployed.toFixed(2) : 0) + 's | Vit Perdida: ' + escapeHtml(((s3.percentVitalityLost || 0) * 100).toFixed(1)) + '%</div>',
+      '    <div class="kv"><strong>Memoria Corta:</strong> ' + escapeHtml(mem.roomsSinceReset || 0) + '/' + escapeHtml(mem.resetIntervalRooms || 4) + ' salas (Reset: ' + escapeHtml(mem.lastResetReason || '-') + ') | Patrón: ' + escapeHtml(mem.dominantPatternLabel || 'VARIADO') + '</div>',
+      '  </div>',
+      '  <div class="box">',
+      '    <div class="kv"><strong>Sentencia Activa:</strong> ' + escapeHtml(s4.regime || '-') + ' | <strong>Ganador:</strong> ' + escapeHtml(cd.winner || '-') + ' | <strong>d100:</strong> ' + escapeHtml(ds.chaosD100 || '-') + ' (Turb x' + escapeHtml(ds.turbulenceMult || 1) + ')</div>',
+      '    <div class="kv"><strong>Fiscal vs Defensor:</strong> ' + escapeHtml(cd.prosecutorScore || 0) + ' vs ' + escapeHtml(cd.defenderScore || 0) + ' (Margen ' + escapeHtml(cd.debateMargin || 0) + ', Calor +' + escapeHtml(cd.heatApplied || 0) + ')</div>',
+      '    <div class="kv"><strong>Modificadores Próxima Sala:</strong> Cant x' + escapeHtml(mod.enemyCountMultiplier || 1) + ' | HP x' + escapeHtml(mod.enemyHpMultiplier || 1) + ' | Dmg x' + escapeHtml(mod.enemyDamageMultiplier || 1) + ' | Spd x' + escapeHtml(mod.enemySpeedMultiplier || 1) + ' | Élite ' + Math.round((mod.elitePromotionChance || 0) * 100) + '%</div>',
+      '    <div class="kv"><strong>Razones Fiscal:</strong> ' + escapeHtml((cd.prosecutorReasons || []).join(' ; ') || 'Ninguna') + '</div>',
+      '    <div class="kv"><strong>Razones Defensor:</strong> ' + escapeHtml((cd.defenderReasons || []).join(' ; ') || 'Ninguna') + '</div>',
+      '  </div>',
+      '</div>',
+      '<h2>2. EXPEDIENTE GLOBAL DEL JUGADOR (LARGO PLAZO) & DIRECTIVAS</h2>',
+      '<div class="box">',
+      '  <div class="kv"><strong>Cambios Arma:</strong> ' + escapeHtml(ledger.weaponSwitchCount || 0) + ' | <strong>Daño Total Recibido:</strong> ' + escapeHtml(Math.round(ledger.totalDamageReceived || 0)) + ' HP | <strong>Enemigos Abatidos:</strong> ' + escapeHtml(ledger.totalEnemiesKilled || 0) + ' | <strong>Veces al Límite (<=22% HP):</strong> ' + escapeHtml(ledger.nearDeathCount || 0) + '</div>',
+      '  <div class="kv"><strong>Prom. Salas:</strong> ' + escapeHtml(ledger.avgRoomClearTime || 0) + 's | <strong>Prom. Jefes:</strong> ' + escapeHtml(ledger.avgBossKillTime || 0) + 's | <strong>Reliquias Históricas:</strong> ' + escapeHtml(ledger.totalRelicsEverGained || 0) + ' (Sacrificios: ' + escapeHtml(ledger.forbiddenSacrificesCount || 0) + ') | <strong>Dashes / Perf.:</strong> ' + escapeHtml(ledger.totalDashesUsed || 0) + ' / ' + escapeHtml(ledger.totalPerfectDodges || 0) + ' | <strong>Ciclos NG+:</strong> ' + escapeHtml(ledger.ngPlusCyclesCarried || 0) + '</div>',
+      '  <div class="kv"><strong>Némesis Personal:</strong> ' + escapeHtml(ledger.nemesisArchetype || 'Ninguno') + ' (' + nemesisTable + ')</div>',
+      '  <div class="kv"><strong>Directivas Activas:</strong> ' + activeDirectivesStr + '</div>',
+      '</div>',
+      '<h2>3. HISTORIAL COMPLETO DE HABITACIONES EVALUADAS (' + history.length + ' salas)</h2>',
+      '<table><thead><tr><th>Sala</th><th>Tipo</th><th>T.Global</th><th>T.Sala</th><th>Vit Perd.</th><th>Debate (F vs D)</th><th>d100</th><th>Régimen</th><th>Multiplicadores</th><th>Directivas & Memoria</th></tr></thead><tbody>',
+      historyRowsHtml,
+      '</tbody></table>',
+      '<h2>4. LOGS COMPLETOS DE CONSOLA Y ERRORES (' + chronoLogs.length + ' entradas, Errores: ' + this.errorCount + ')</h2>',
+      '<table><thead><tr><th style="width:70px;">Hora</th><th style="width:65px;">Nivel</th><th>Mensaje</th></tr></thead><tbody>',
+      logsRowsHtml,
+      '</tbody></table>',
+      '</body></html>'
+    ].join('\n');
+  };
+
+  InGameDevConsole.prototype.exportLogsAsPdf = function () {
+    try {
+      var html = this.buildFullReportHtml();
+      var now = new Date();
+      var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+      var pdfTitle = 'BrotherEye_Logs_' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '_' + pad(now.getHours()) + pad(now.getMinutes());
+
+      var oldFrame = document.getElementById('dev-pdf-print-frame');
+      if (oldFrame && oldFrame.parentNode) {
+        oldFrame.parentNode.removeChild(oldFrame);
+      }
+
+      var iframe = document.createElement('iframe');
+      iframe.id = 'dev-pdf-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.style.visibility = 'hidden';
+      document.body.appendChild(iframe);
+
+      var doc = iframe.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      var prevTitle = document.title;
+      document.title = pdfTitle;
+
+      var triggerPrint = function () {
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } finally {
+          setTimeout(function () {
+            document.title = prevTitle;
+          }, 800);
+        }
+      };
+
+      setTimeout(triggerPrint, 60);
+      this.log('INFO', 'Exportación PDF disparada (' + (this.logs.length) + ' logs, ' +
+        ((typeof BrotherEye !== 'undefined' && BrotherEye.roomHistory) ? BrotherEye.roomHistory.length : 0) + ' salas). Elegí "Guardar como PDF".');
+      if (window.activeGameInstance && window.activeGameInstance.ui) {
+        window.activeGameInstance.ui.showToast('📄 Abriendo diálogo PDF con todos los logs');
+      }
+      return true;
+    } catch (err) {
+      this.log('ERROR', 'No se pudo abrir la impresión PDF: ' + err.message);
+      return false;
+    }
   };
 
   root.devConsole = new InGameDevConsole();

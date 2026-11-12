@@ -88,7 +88,7 @@ var BossShockwaveHazard = class BossShockwaveHazard extends BaseEntity {
           }
         } else if (!isGrace) {
           this.hasHitPlayer = true;
-          player.takeDamage(this.damage, room, { isProjectile: false });
+          player.takeDamage(this.damage, room, { isProjectile: false, sourceArchetype: 'GoliatBoss' });
           const push = MathUtils.normalize(player.x - this.x, player.y - this.y);
           player.x = MathUtils.clamp(player.x + push.x * 40, (room ? room.bounds.left : 100) + player.radius, (room ? room.bounds.right : 800) - player.radius);
           player.y = MathUtils.clamp(player.y + push.y * 40, (room ? room.bounds.top : 100) + player.radius, (room ? room.bounds.bottom : 600) - player.radius);
@@ -186,7 +186,7 @@ var AbyssalGeyserHazard = class AbyssalGeyserHazard extends BaseEntity {
           const isDashing = typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player);
           if (!isDashing) {
             this.hitCooldown = 0.4;
-            player.takeDamage(this.damage, room);
+            player.takeDamage(this.damage, room, { sourceArchetype: 'AbismoBoss' });
           }
         }
       }
@@ -281,7 +281,7 @@ var CelestialJudgmentPillar = class CelestialJudgmentPillar extends BaseEntity {
             CombatSystem.triggerPerfectDodge(player, room, player.x, player.y, '⚡ JUICIO EVADIDO');
           } else {
             this.hasDamaged = true;
-            player.takeDamage(this.damage, room);
+            player.takeDamage(this.damage, room, { sourceArchetype: 'SerafinBoss' });
           }
         }
       }

@@ -847,7 +847,10 @@ class RunSaveManagerClass {
           relics: p.itemManager && Array.isArray(p.itemManager.ownedRelics)
             ? p.itemManager.ownedRelics.map(rel => ({ id: rel.id, level: rel.level || 1 }))
             : []
-        }
+        },
+        brotherEyeState: (typeof BrotherEye !== 'undefined' && typeof BrotherEye.exportSaveState === 'function')
+          ? BrotherEye.exportSaveState()
+          : null
       };
 
       localStorage.setItem(SUSPENDED_RUN_STORAGE_KEY, JSON.stringify(data));
@@ -899,6 +902,10 @@ class RunSaveManagerClass {
 
       gameInstance.state = 'PLAYING';
       gameInstance.isPaused = false;
+
+      if (data.brotherEyeState && typeof BrotherEye !== 'undefined' && typeof BrotherEye.importSaveState === 'function') {
+        BrotherEye.importSaveState(data.brotherEyeState);
+      }
 
       // Generar piso correspondiente
       const eyeSpawnMult = (typeof BrotherEye !== 'undefined' && BrotherEye.enabled)

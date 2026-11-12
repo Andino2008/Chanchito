@@ -116,6 +116,9 @@ class CombatSystem {
     if (player.ui) {
       player.ui.updateStats(player);
     }
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
+      BrotherEye.recordAction('PERFECT_DODGE');
+    }
     return true;
   }
 
@@ -157,6 +160,10 @@ class CombatSystem {
     player.dodgeDir = (moveVec && moveVec.length > 0)
       ? { x: moveVec.x, y: moveVec.y }
       : { x: aimState.aimX, y: aimState.aimY };
+
+    if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
+      BrotherEye.recordAction('DASH', { dirX: player.dodgeDir.x, dirY: player.dodgeDir.y });
+    }
 
     // 4. Game Juice: partículas y screen-shake sutil de propulsión
     if (room && typeof room.spawnParticle === 'function') {
@@ -255,6 +262,10 @@ class CombatSystem {
             reflectedProj.borderColor = '#ffffff';
             room.projectiles.push(reflectedProj);
             player.itemManager.onShoot(reflectedProj, room);
+
+            if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
+              BrotherEye.recordAction('PARRY');
+            }
 
             if (window.synergyEngine && typeof window.synergyEngine.onParrySuccess === 'function') {
               window.synergyEngine.onParrySuccess(player, room);

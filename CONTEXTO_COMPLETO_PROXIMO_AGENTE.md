@@ -568,3 +568,53 @@ Ubicados en la zona lateral derecha, con volumen generoso y respuesta instantán
 * **Carga Sincronizada Desktop & Móvil:** Both `index.html` y `index_mobile.html` cargan `weapons.js` antes de `evolutions.js` / `synergies.js` / `script.js` (y también `level_templates.js` quedó incluido en `index_mobile.html`).
 
 ---
+
+## 21. SISTEMA JUDICIAL DE DIFICULTAD ADAPTATIVA "EL DEBATE" + MEMORIA A CORTO PLAZO (`BrotherEye.js` v3.0 / `v3.2`)
+
+### 21.1 Diagnóstico Previo (Por qué dejaba de escalar tras 25 salas)
+* La fórmula v2.0 dividía el daño recibido bruto entre tiempos cortos (`14 HP / 1.97s = 7.12 DTPS`), interpretando erróneamente como "masacre" cuando un tanque con 488 de vitalidad perdía apenas el `2.8%` de su vida evaporando salas en `< 2s`.
+* El tope de `R = 100` y los multiplicadores limitados sin escalado de HP en enemigos comunes ni presión acumulada hacían que builds rotas después de la sala 25 limpiaran hordas en `< 1s`.
+
+### 21.2 Arquitectura del Tribunal Interno (`BrotherEye.js` v3.0-JUDICIAL)
+* **Reciclaje de Estados `-1` a `4`:**
+  * **Estado `-1` (`globalClock`):** Reloj global continuo, contador total de salas limpiadas (`roomsClearedCount`), jefes caídos (`bossesKilledCount`), muertes de sesión (`sessionStorage`) y **Calor Judicial Acumulado (`baseHeatLevel` 0..100)** sin amnesia entre salas.
+  * **Estado `0` (`state0_initial`):** Foto inicial de run / NG+ (`potentialDpsBase`).
+  * **Estado `1` (`ROOM_ENTER`):** Aplica la sentencia previa (`enemyCountMultiplier`, **`enemyHpMultiplier`** hasta `x3.60`, `enemyDamageMultiplier`, `enemySpeedMultiplier`, **`elitePromotionChance`** hasta `40%`, y contramedidas tácticas de enemigos). No nerfea jamás el daño del jugador.
+  * **Estado `2` (`MIDPOINT` 50%) y Estado `3` (`ROOM_COMPLETE` 100%):** Evalúa **`percentVitalityLost` (`daño / entryVitality`)**, `kpsTotal`, `dtpsTotal`, `combatSlowdownRatio`, `potentialDpsSnapshot` y `campRatioInRoom`.
+* **Estado `4` — El Debate Judicial:**
+  1. **🔴 BrotherEye (El Fiscal Sádico — `evaluateProsecutor_BrotherEye`):** Acusa (sin techo artificial en 100) si evaporas la sala rápido, pierdes `< 5%` de tu tanque total, acumulas reliquias/DPS alto o superas las 12/18/25+ habitaciones. Si derretís un Jefe en `< 12s`, sube permanentemente el `baseHeatLevel`.
+  2. **🔵 JusticeEye (El Abogado Defensor — `evaluateDefender_JusticeEye`):** Interpone clemencia si estás por debajo del `35–45%` HP, perdiste `> 28%` de vitalidad en la sala, tu **DPS Potencial Real** quedó por debajo de lo esperado para el piso (mal RNG), sufriste combate lento/agotador o acumulás muertes en sesión.
+  3. **🎲 Tirada de Dados (Factor Caos — `d100` + Turbulencia `0.84x–1.22x`):**
+     * `d100 <= 10` (`10%`) -> ✨ **`BENDICION_DIVINA`** (ignora al Fiscal: tregua y `+25%` drops de corazones).
+     * `d100 >= 90` (`11%`, bloqueado si estás `< 22% HP` sin escudo) -> 💀 **`MALDICION_TRIBUNAL`** (ignora defensa tibia: horda masiva + Élites).
+     * `11..89` -> Veredicto neto (`Fiscal - Defensor + Calor`) con ruido caótico entre: **`CLEMENCIA_DEFENSOR`**, **`JUICIO_EQUILIBRADO`**, **`ACUSACION_FISCAL`** y **`SENTENCIA_MAXIMA`**.
+
+### 21.3 Tabla de Telemetría a Corto Plazo (Borrón y Cuenta Nueva)
+* **Registro entre sala y sala (`BrotherEye.recordAction`):** Hookeado desde `weapons.js` (`PROJECTILE`, `MELEE`, `BEAM`), `combat.js` (`DASH` con dirección `LEFT/RIGHT/UP/DOWN`, `PARRY`, `PERFECT_DODGE`) y `onRoomTick` (detección de camping estático).
+* **Contramedidas Tácticas:** Si el jugador abusa (`>= 74%`) de disparos a distancia/rayo -> inyecta `ChargerEnemy`/`DASHER` rápidos; si abusa de Melee/Parry -> inyecta `ShooterEnemy`/`SplitterEnemy`; si esquiva siempre al mismo lado -> flanquea en esa dirección.
+* **Reset Periódico (`resetShortTermMemory`):** Se borra automáticamente **cada `N = 4` salas limpiadas O al cambiar de Nivel (`BrotherEye.onLevelTransition`)**, garantizando borrón y cuenta nueva sin castigos eternos.
+* **Consola `[F2]` (`dev_console.js`):** Tarjetas en vivo para **Fiscal (BrotherEye)**, **Defensor (JusticeEye)**, **Dados del Caos**, **Memoria a Corto Plazo** (contador `N/4`) e historial judicial de habitaciones.
+
+### 21.4 Hotfix Crítico Fase 2 de Jefes + Topes Globales de Velocidad + Curva Temprana (`v3.2.1`)
+* **Fix Invulnerabilidad Eterna en Fase 2 (`Boss.update` en `script.js`):** `boss_phases.js` asignaba `boss.invulnerableTimer = 1.25` al disparar el Phase Gate al `50% HP`, pero solo `GoliatBoss` y `NemesisBoss` lo decrementaban; **`AbismoBoss`** y **`SerafinBoss`** quedaban permanentemente invulnerables en Fase 2. Se movió el decremento a la clase base `Boss.update()` y se garantizó `hasInvulnerabilityCycle = false` en Jefes.
+* **Topes Globales de Velocidad de Caminata (`CONFIG.ENEMY_SPEED_CAPS` + clamp en `Enemy.update` & `BrotherEye.js`):** Frente a `Player.baseSpeed = 270 px/s`, todos los enemigos tienen techo estricto en persecución (`COMMON: 215`, `FLYER: 225`, `ELITE: 235`, `BERSERK_MAX: 242`, `BOSS_WALK_P1: 220`, `BOSS_WALK_P2: 240`), respetado también por `BrotherEye` (`SPD_MAX: 1.07–1.12`). Las embestidas con wind-up (`DASHER`, `ChargerEnemy`, cargas de Boss) conservan su velocidad telegrafiada.
+* **Curva Progresiva de Calor (`getMaxHeatForDepth`) y Sangría en `JusticeEye`:** El Calor Judicial tiene techo por etapa (`24 -> 42 -> 62 -> 80 -> 100` recién en sala `24+`), los multiplicadores escalan progresivamente por profundidad (`depthCurve`), y perder `>= 30%` de vitalidad en una sala frena al Fiscal.
+
+### 21.5 3ra Capa de Memoria: Expediente Global del Jugador y Directivas (`v3.3`)
+* **Recolección 100% Event-Driven (`BrotherEye.globalLedger`, 0 costo por frame):**
+  * `weaponSwitchCount` y `weaponUsageById`: Contabilizados en [`Player.selectWeapon()`](file:///C:/experimentoweb/script.js) y `BrotherEye.recordAction()`.
+  * `totalDamageReceived`, `nearDeathCount` (`<= 22% HP`) y `nemesisByArchetype` / `nemesisArchetype`: Capturados en `Player.takeDamage()` y `takeEnvironmentalDoT()` identificando al arquetipo atacante (`ShooterEnemy`, `ChargerEnemy`, `FlyerEnemy`, `SplitterEnemy`, `EliteEnemy`, Jefes).
+  * `totalEnemiesKilled`: Capturado al confirmar bajas en `Room.update()`.
+  * `roomClearTimes[]` / `avgRoomClearTime` y `bossKillTimes[]` / `avgBossKillTime`: Calculados al cerrar cada sala en `BrotherEye.ROOM_COMPLETE()`.
+  * `totalRelicsEverGained` y `forbiddenSacrificesCount`: Contador **monótono creciente** en `ItemManager.addRelic()`; **jamás disminuye** al activar `GLITCHED_RELIC` (*La Reliquia Prohibida*) ni al usar `clearRelicsKeepBaseStats()` en el Altar del Cuerpo NG+, y conserva la biografía completa al avanzar a ciclos **NG+**.
+  * `totalDashesUsed` y `totalPerfectDodges`: Acumulados sin borrarse en el reset de 4 salas.
+* **Tabla Declarativa de Directivas (`GLOBAL_DIRECTIVES_TABLE` evaluada en Estado 4):**
+  * `PODER_DEVORADO`: Detecta `totalRelicsEverGained >= 7` con `<= 2` reliquias visibles (+26 pts al Fiscal y +14% Élites).
+  * `MONJE_UNA_ARMA` vs `MAESTRO_ARSENAL`: Ajusta presión y contramedidas si el jugador nunca cambia de arma (`0` swaps tras 8 salas) o domina combos multi-arma (`>= 14` swaps y `< 9.5s` promedio).
+  * `VERDUGO_DE_JEFES`: Si promedia `< 14s` contra Jefes, impone tenacidad mínima (`>= 1.38x`) al próximo Jefe en `tuneBossForPlayerBuild()` incluso tras una *Bendición Divina* (+ escolta Némesis).
+  * `INTOCABLE`: Con `0` casi-muertes y `< 45` daño tras `>= 10` salas, fija piso de Calor en `45` y duplica probabilidad de *Maldición del Tribunal* en `d100`.
+  * `SUPERVIVIENTE_CASTIGADO`: Con `>= 3` casi-muertes o alto castigo promedio, concede `+28` al Defensor, `-12%` daño enemigo y `+12%` drop de corazones.
+  * `HIPER_MOVILIDAD` y `NEMESIS_PERSONAL`: Con `MALDICION_TRIBUNAL` o `SENTENCIA_MAXIMA`, los primeros refuerzos instanciados en `applyAdaptationToRoom()` pertenecen al arquetipo Némesis del jugador.
+* **Persistencia y Consola `[F2]`:** `RunSaveManager` serializa/restaura `BrotherEye.exportSaveState()` / `importSaveState()` (con guarda `isRestoring` en `addRelic()`), y `[F2]` muestra la tarjeta `📜 EXPEDIENTE GLOBAL DEL JUGADOR` con las directivas activas.
+
+---

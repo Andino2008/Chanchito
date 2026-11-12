@@ -1498,6 +1498,10 @@ const RELIC_CATALOG = {
           );
         }
 
+        if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordRelicSacrifice === 'function') {
+          BrotherEye.recordRelicSacrifice(sacrificedCount);
+        }
+
         if (player.ui) {
           player.ui.showToast(
             `¡LA RELIQUIA PROHIBIDA CONSUMIÓ ${sacrificedCount} OBJETO(S)! Poder mutado x${sacrificedCount}`
@@ -2634,6 +2638,11 @@ class ItemManager {
           relicDef.hooks.onPickup(existingState, this.player, this);
         }
       }
+    }
+
+    const isRestoringSave = Boolean(typeof window !== 'undefined' && window.RunSaveManager && window.RunSaveManager.isRestoring);
+    if (!isRestoringSave && typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordRelicGained === 'function') {
+      BrotherEye.recordRelicGained(relicId, 1);
     }
 
     this.applyPassiveStats();
