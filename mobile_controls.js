@@ -512,13 +512,18 @@
           updateAimAssist(game.player, game.currentRoom);
         }
 
-        // 2. Actualizar estado del botón de Esquiva
+        // 2. Actualizar estado del botón de Esquiva (Estamina)
         if (btnDodge) {
           const dodgePipCount = document.getElementById('touch-dodge-charges');
+          const cost = typeof game.player.getDashStaminaCost === 'function'
+            ? game.player.getDashStaminaCost()
+            : (game.player.dashStaminaCost || 30);
+          const stam = typeof game.player.stamina === 'number' ? game.player.stamina : 100;
+          const availDashes = game.player.isStaminaExhausted ? 0 : Math.floor(stam / Math.max(1, cost));
           if (dodgePipCount) {
-            dodgePipCount.textContent = String(game.player.dodgeCharges || 0);
+            dodgePipCount.textContent = String(availDashes);
           }
-          if (game.player.dodgeCharges <= 0) {
+          if (game.player.isStaminaExhausted || stam < cost) {
             btnDodge.classList.add('depleted');
           } else {
             btnDodge.classList.remove('depleted');

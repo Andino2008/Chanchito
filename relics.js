@@ -2007,19 +2007,15 @@ const RELIC_CATALOG = {
     name: 'Pluma lunar',
     short: 'LUN',
     color: '#a5b4fc',
-    description: 'Obtenés un impulso de evasión adicional ([SHIFT] / [F]). Suma +1 carga a tu capacidad máxima de esquiva (hasta 3 cargas).',
+    description: 'Aumenta tu Estamina máxima en +30 y reduce el coste de Dash en -15% para encadenar más esquivas ([SHIFT] / [F]).',
     hooks: {
       onPickup(state, player) {
-        player.maxDodgeCharges = (player.maxDodgeCharges || 2) + 1;
-        player.dodgeCharges = Math.min(
-          player.maxDodgeCharges,
-          (player.dodgeCharges || 2) + 1
-        );
+        player.stamina = Math.min((player.maxStamina || 100) + 30, (player.stamina || 100) + 30);
+        player.isStaminaExhausted = false;
       },
       applyPassiveStats(stats, state, player) {
-        if ((player.maxDodgeCharges || 2) < 3) {
-          player.maxDodgeCharges = 3;
-        }
+        stats.maxStamina = (stats.maxStamina || 100) + 30;
+        stats.dashCostMultiplier = Math.max(0.45, (stats.dashCostMultiplier || 1.0) * 0.85);
       },
     },
   },
@@ -2117,8 +2113,12 @@ const RELIC_CATALOG = {
           (player.skillCooldownReduction || 0) + 0.2
         );
 
-        if (player.dodgeCooldownTimer > 0) {
-          player.dodgeCooldownTimer = Math.max(0, player.dodgeCooldownTimer - 0.2);
+        if (typeof player.stamina === 'number') {
+          player.stamina = Math.min(player.maxStamina || 100, player.stamina + 14);
+          if (player.stamina >= (player.getDashStaminaCost ? player.getDashStaminaCost() : 30)) {
+            player.isStaminaExhausted = false;
+          }
+          player.ui?.updateStamina?.(player);
         }
 
         if (itemManager && itemManager.relicStates) {
@@ -2685,6 +2685,8 @@ class ItemManager {
       enemySpawnMultiplier: 1.0,
       critChance: this.player.baseCritChance || 0.0,
       sizeMultiplier: 1.0,
+      maxStamina: this.player.baseMaxStamina || 100,
+      dashCostMultiplier: this.player.baseDashCostMultiplier || 1.0,
     };
 
     for (const sub of this.hookSubscribers.applyPassiveStats) {
@@ -2760,9 +2762,19 @@ class ItemManager {
       Math.round((this.player.baseRadius || 18) * this.player.sizeMultiplier)
     );
 
+    this.player.maxStamina = Math.max(40, Math.round(stats.maxStamina || 100));
+    this.player.stamina = Math.min(
+      typeof this.player.stamina === 'number' ? this.player.stamina : this.player.maxStamina,
+      this.player.maxStamina
+    );
+    this.player.dashCostMultiplier = Math.max(0.45, Number((stats.dashCostMultiplier || 1.0).toFixed(2)));
+
     if (this.player.ui) {
       this.player.ui.updateStats(this.player);
       this.player.ui.updateHealth(this.player);
+      if (typeof this.player.ui.updateStamina === 'function') {
+        this.player.ui.updateStamina(this.player);
+      }
     }
   }
 

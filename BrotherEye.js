@@ -777,6 +777,9 @@
   BrotherEyeEngine.prototype.resetShortTermMemory = function (reason) {
     this.shortTermMemory = createEmptyShortTermMemory(reason || 'CYCLE_RESET');
     this.shortTermMemory.justClearedMemory = (reason && reason !== 'INIT' && reason !== 'NEW_RUN_OR_R');
+    if (typeof HiveMindSystem !== 'undefined' && HiveMindSystem && typeof HiveMindSystem.syncWithBrotherEyeReset === 'function') {
+      HiveMindSystem.syncWithBrotherEyeReset(reason || 'CYCLE_RESET');
+    }
   };
 
   /**

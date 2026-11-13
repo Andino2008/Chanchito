@@ -88,6 +88,9 @@
           weaponKey: (weapon && weapon.id ? weapon.id : 'WEAPON') + ':' + (modeCfg.id || 'PROJ')
         });
       }
+      if (typeof CombatSystem !== 'undefined' && typeof CombatSystem.notifyPlayerAttacked === 'function') {
+        CombatSystem.notifyPlayerAttacked(player);
+      }
 
       this.playSound(modeCfg.sound);
       this.triggerFeedback(modeCfg.screenShake, modeCfg.hitStop);
@@ -211,6 +214,9 @@
           BrotherEye.recordAction('MELEE', {
             weaponKey: (weapon && weapon.id ? weapon.id : 'SWORD') + ':' + (modeCfg.id || 'MELEE')
           });
+        }
+        if (typeof CombatSystem !== 'undefined' && typeof CombatSystem.notifyPlayerAttacked === 'function') {
+          CombatSystem.notifyPlayerAttacked(player);
         }
 
         this.playSound(modeCfg.sound);
@@ -348,6 +354,9 @@
         BrotherEye.recordAction('BEAM', {
           weaponKey: (weapon && weapon.id ? weapon.id : 'LASER') + ':' + (modeCfg.id || 'BEAM')
         });
+      }
+      if (typeof CombatSystem !== 'undefined' && typeof CombatSystem.notifyPlayerAttacked === 'function') {
+        CombatSystem.notifyPlayerAttacked(player);
       }
       this.playSound(modeCfg.sound);
       this.triggerFeedback(modeCfg.screenShake, modeCfg.hitStop);

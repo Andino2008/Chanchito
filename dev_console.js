@@ -1034,6 +1034,43 @@
       '      <span style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">Directivas: ' + directivesPills + '</span>',
       '    </div>',
       '  </div>',
+      (function () {
+        if (typeof HiveMindSystem === 'undefined') return '';
+        var hm = HiveMindSystem.getTelemetry();
+        var o = hm.oracle || {};
+        var q = o.q || {};
+        var t4 = hm.table4Rooms || {};
+        var net = hm.interHiveNetwork || {};
+        var sh = hm.subHives || {};
+        var st = hm.stats || {};
+        var qKeys = Object.keys(q);
+        var boolHtml = qKeys.map(function (k) {
+          var on = Boolean(q[k]);
+          return '<span style="padding:1px 5px;border-radius:4px;font-size:0.62rem;border:1px solid ' + (on ? '#f59e0b' : '#334155') + ';background:' + (on ? 'rgba(245,158,11,0.2)' : 'rgba(15,23,42,0.7)') + ';color:' + (on ? '#fde68a' : '#64748b') + ';">' + escapeHtml(k) + ':' + (on ? '1' : '0') + '</span>';
+        }).join('');
+        var subHtml = ['MELEE', 'RANGED', 'CHARGER', 'ELITE', 'BOSS'].map(function (t) {
+          var h = sh[t] || {};
+          return '<span style="font-size:0.67rem;"><strong>' + t + '</strong>(' + (h.count || 0) + ', ex:' + (h.exhaustedCount || 0) + '): <em style="color:#38bdf8;">' + escapeHtml(h.directive || '-') + '</em></span>';
+        }).join(' | ');
+        return [
+          '  <div class="eye-card" style="grid-column: 1 / -1; border-color: rgba(245, 158, 11, 0.45);">',
+          '    <div class="eye-card-title" style="color:#fbbf24;">🐝 MENTE COLMENA & ORÁCULO GLOBAL (FIBONACCI [3,5,8,1] · SALAS 4/4)</div>',
+          '    <div class="eye-kv" style="flex-wrap:wrap;gap:10px;">',
+          '      <span>Sector Vago (3x3): <strong style="color:#fbbf24;">' + escapeHtml(o.sectorLabel || 'CENTER') + ' (' + (o.playerMoveTrend || 'STATIC') + ' / ' + (o.playerDistZone || 'MID') + ')</strong></span>',
+          '      <span>Vivos: <strong>' + (o.livingEnemies || 0) + '/' + (o.initialEnemies || 0) + ' (' + Math.round((o.aliveRatio || 1) * 100) + '%)</strong></span>',
+          '      <span>Ahorro CPU Fibonacci: <strong style="color:#4ade80;">' + (st.cpuSavedPct || 0) + '%</strong> (' + (st.skippedTicks || 0) + '/' + (st.totalTicks || 0) + ' saltados)</span>',
+          '      <span>Tabla 4 Salas: <strong>' + (t4.roomsTracked || 0) + '/4</strong> | Sincronías Extremas: <strong style="color:#f87171;">' + (t4.extremeSyncTriggers || 0) + '</strong></span>',
+          '    </div>',
+          '    <div class="eye-kv" style="margin-top:3px;flex-wrap:wrap;gap:6px;">',
+          '      <span>Sub-Colmenas: ' + subHtml + '</span>',
+          '    </div>',
+          '    <div class="eye-kv" style="margin-top:3px;border-top:1px dashed #334155;padding-top:4px;">',
+          '      <span>Red Inter-Colmena (' + (net.milestonePct || 100) + '%): <strong style="color:#fde047;">' + escapeHtml(net.lastTip || '-') + '</strong></span>',
+          '    </div>',
+          '    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">' + boolHtml + '</div>',
+          '  </div>'
+        ].join('\n');
+      })(),
       historyHtml,
       '</div>'
     ].join('\n');
@@ -1386,10 +1423,20 @@
 
     var playerSummary = p
       ? ('HP ' + Math.round(p.hp) + '/' + Math.round(p.maxHp) + ' | Escudo ' + Math.round(p.shield || 0) +
+         ' | Estamina ' + Math.round(p.stamina || 0) + '/' + Math.round(p.maxStamina || 100) +
          ' | Oro ' + (p.coins || 0) + ' | Llaves ' + (p.keys || 0) +
          ' | Dmg x' + (p.damageMultiplier || 1).toFixed(2) + ' | VelAtq x' + (p.attackSpeedMultiplier || 1).toFixed(2) +
          ' | Proy +' + (p.extraProjectiles || 0))
       : 'Partida no iniciada en runtime';
+
+    var hm = (typeof HiveMindSystem !== 'undefined') ? HiveMindSystem.getTelemetry() : null;
+    var hiveSummaryHtml = hm
+      ? ('<h2>2B. MENTE COLMENA & FIBONACCI (v3.5)</h2><div class="box">' +
+         '<div class="kv"><strong>Sector Vago:</strong> ' + escapeHtml(hm.oracle.sectorLabel || 'CENTER') + ' (' + escapeHtml(hm.oracle.playerMoveTrend || 'STATIC') + ') | <strong>Vivos:</strong> ' + escapeHtml(hm.oracle.livingEnemies) + '/' + escapeHtml(hm.oracle.initialEnemies) + ' | <strong>Ahorro CPU Fibonacci:</strong> ' + escapeHtml(hm.stats.cpuSavedPct || 0) + '%</div>' +
+         '<div class="kv"><strong>Tabla 4 Salas:</strong> ' + escapeHtml(hm.table4Rooms.roomsTracked) + '/4 (Reset: ' + escapeHtml(hm.table4Rooms.lastResetReason) + ') | <strong>Sincronías Extremas:</strong> ' + escapeHtml(hm.table4Rooms.extremeSyncTriggers) + '</div>' +
+         '<div class="kv"><strong>Tip Red Inter-Colmena (' + escapeHtml(hm.interHiveNetwork.milestonePct) + '%):</strong> ' + escapeHtml(hm.interHiveNetwork.lastTip || '-') + '</div>' +
+         '</div>')
+      : '';
 
     var locationSummary = game
       ? ('Sección ' + game.currentSection + ' - Nivel ' + game.currentLevel + ' | Sala: ' + (r ? (r.type + ' (' + (r.templateName || r.layoutType || 'proc') + ')') : 'N/A'))
@@ -1448,6 +1495,7 @@
       '  <div class="kv"><strong>Némesis Personal:</strong> ' + escapeHtml(ledger.nemesisArchetype || 'Ninguno') + ' (' + nemesisTable + ')</div>',
       '  <div class="kv"><strong>Directivas Activas:</strong> ' + activeDirectivesStr + '</div>',
       '</div>',
+      hiveSummaryHtml,
       '<h2>3. HISTORIAL COMPLETO DE HABITACIONES EVALUADAS (' + history.length + ' salas)</h2>',
       '<table><thead><tr><th>Sala</th><th>Tipo</th><th>T.Global</th><th>T.Sala</th><th>Vit Perd.</th><th>Debate (F vs D)</th><th>d100</th><th>Régimen</th><th>Multiplicadores</th><th>Directivas & Memoria</th></tr></thead><tbody>',
       historyRowsHtml,

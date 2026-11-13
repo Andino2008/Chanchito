@@ -13,14 +13,21 @@
  */
 
 const COMBAT_CONFIG = {
-  // --- Cancelación de Animaciones, Dash y Evasión Perfecta (Hades Style v2.9) ---
+  // --- Cancelación de Animaciones, Dash con Estamina (Souls) y Evasión Perfecta (v3.5) ---
+  PLAYER_MAX_STAMINA: 100,          // Estamina base del jugador
+  DASH_STAMINA_COST: 30,            // Coste base por cada Dash (sin límite fijo de cargas)
+  STAMINA_REGEN_RATE: 42,           // Regeneración por segundo al estar en reposo
+  STAMINA_REGEN_DELAY: 0.36,        // Pausa breve tras hacer Dash
+  STAMINA_EXHAUSTED_DELAY: 0.72,    // Pausa extra si se vacía la barra a 0 (Agotamiento)
+  STAMINA_EMPTY_ATTACK_PENALTY_MULT: 0.55, // Si dispara/ataca con estamina en 0, recarga más lento
+  STAMINA_EMPTY_ATTACK_PENALTY_DURATION: 0.35,
   DASH_DURATION: 0.20,              // Duración activa del dash en segundos
   DASH_GLIDE_DURATION: 0.12,        // Deslizamiento fluido de salida tras el dash
   DASH_I_FRAMES: 0.30,              // Tiempo total de invulnerabilidad (i-frames)
   DASH_SPEED_MULT: 2.50,            // Multiplicador de velocidad de traslación
   DASH_KNOCKBACK_FORCE: 340,        // Empuje físico a enemigos al atravesarlos
   DASH_CANCEL_ATTACK: true,         // Cancela instantáneamente swings de espada y carga láser
-  PERFECT_DODGE_CD_REFUND: 0.95,    // Reembolso de cooldown del Dash al esquivar en I-Frames
+  PERFECT_DODGE_STAMINA_REFUND: 28, // Reembolso instantáneo de estamina al esquivar en I-Frames
   PERFECT_DODGE_SPEED_BONUS: 0.25,  // +25% velocidad de movimiento temporal tras Evasión Perfecta
   PERFECT_DODGE_ASPD_BONUS: 0.20,   // +20% velocidad de ataque temporal tras Evasión Perfecta
   PERFECT_DODGE_BUFF_DURATION: 1.6, // Duración del impulso de Adrenalina
@@ -68,19 +75,12 @@ class CombatSystem {
 
     player.perfectDodgeInternalCd = COMBAT_CONFIG.PERFECT_DODGE_INTERNAL_CD;
 
-    // 1. Reembolso de enfriamiento de Dash (puede restaurar una carga de inmediato)
-    if (player.dodgeCharges < player.maxDodgeCharges) {
-      const currentCd = player.dodgeCooldownTimer > 0
-        ? player.dodgeCooldownTimer
-        : (player.dodgeCharges === 0 ? (player.dodgeCooldownEmpty || 1.95) : (player.dodgeCooldownSingle || 1.45));
-      player.dodgeCooldownTimer = currentCd - COMBAT_CONFIG.PERFECT_DODGE_CD_REFUND;
-      if (player.dodgeCooldownTimer <= 0) {
-        player.dodgeCharges = Math.min(player.maxDodgeCharges, player.dodgeCharges + 1);
-        player.dodgeCooldownTimer = player.dodgeCharges < player.maxDodgeCharges
-          ? (player.dodgeCooldownSingle || 1.45)
-          : 0;
-      }
-    }
+    // 1. Reembolso instantáneo de Estamina (premia esquivar justo a tiempo)
+    const maxStam = player.maxStamina || COMBAT_CONFIG.PLAYER_MAX_STAMINA;
+    const refund = COMBAT_CONFIG.PERFECT_DODGE_STAMINA_REFUND || 28;
+    player.stamina = Math.min(maxStam, (player.stamina || 0) + refund);
+    player.isStaminaExhausted = false;
+    player.staminaRegenDelayTimer = 0;
 
     // 2. Impulso de Adrenalina temporal (+25% Velocidad, +20% Cadencia)
     player.adrenalineTimer = COMBAT_CONFIG.PERFECT_DODGE_BUFF_DURATION;
@@ -114,6 +114,7 @@ class CombatSystem {
       player.ui.spawnFloatingText(label, '#38bdf8', player.x, player.y - 24);
     }
     if (player.ui) {
+      if (typeof player.ui.updateStamina === 'function') player.ui.updateStamina(player);
       player.ui.updateStats(player);
     }
     if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled && typeof BrotherEye.recordAction === 'function') {
@@ -123,7 +124,18 @@ class CombatSystem {
   }
 
   /**
-   * Intenta ejecutar un impulso evasivo (Dash) con cancelación instantánea de animación.
+   * Notifica que el jugador disparó/atacó. Si tiene la estamina en 0 (agotado),
+   * ralentiza ligeramente la regeneración de estamina mientras sigue atacando.
+   */
+  static notifyPlayerAttacked(player) {
+    if (!player) return;
+    if ((player.stamina || 0) <= 1 || player.isStaminaExhausted) {
+      player.staminaAttackPenaltyTimer = COMBAT_CONFIG.STAMINA_EMPTY_ATTACK_PENALTY_DURATION;
+    }
+  }
+
+  /**
+   * Intenta ejecutar un impulso evasivo (Dash) consumiendo Estamina con cancelación de animación.
    * @param {Player} player
    * @param {InputManager} input
    * @param {Room} room
@@ -133,14 +145,29 @@ class CombatSystem {
    */
   static handlePlayerDash(player, input, room, aimState, moveVec) {
     if (!input.consumeDodgeTrigger()) return false;
-    if (player.dodgeCharges <= 0 || player.dodgeActiveTimer > 0) return false;
+    if (player.dodgeActiveTimer > 0) return false;
 
-    // 1. Gastar carga y configurar recarga inteligente
-    player.dodgeCharges -= 1;
-    if (player.dodgeCharges === 0) {
-      player.dodgeCooldownTimer = player.dodgeCooldownEmpty;
-    } else if (player.dodgeCooldownTimer <= 0) {
-      player.dodgeCooldownTimer = player.dodgeCooldownSingle;
+    const dashCost = typeof player.getDashStaminaCost === 'function'
+      ? player.getDashStaminaCost()
+      : (player.dashStaminaCost || COMBAT_CONFIG.DASH_STAMINA_COST);
+    const currentStam = typeof player.stamina === 'number' ? player.stamina : 0;
+
+    if (player.isStaminaExhausted || currentStam < dashCost) {
+      if (player.ui && typeof player.ui.spawnFloatingText === 'function' && (player._noStaminaToastCd || 0) <= 0) {
+        player._noStaminaToastCd = 0.55;
+        player.ui.spawnFloatingText('SIN ESTAMINA', '#f87171', player.x, player.y - 22);
+      }
+      return false;
+    }
+
+    // 1. Consumir Estamina estilo Dark Souls simplificado
+    player.stamina = Math.max(0, currentStam - dashCost);
+    if (player.stamina <= 0) {
+      player.stamina = 0;
+      player.isStaminaExhausted = true;
+      player.staminaRegenDelayTimer = COMBAT_CONFIG.STAMINA_EXHAUSTED_DELAY;
+    } else {
+      player.staminaRegenDelayTimer = COMBAT_CONFIG.STAMINA_REGEN_DELAY;
     }
 
     // 2. ANIMATION CANCELING: cortar al milisegundo cualquier swing o carga de arma
@@ -183,7 +210,10 @@ class CombatSystem {
     if (window.PIG_ARCHETYPES && player.archetype && window.PIG_ARCHETYPES[player.archetype]?.onDodge) {
       window.PIG_ARCHETYPES[player.archetype].onDodge(player, room);
     }
-    if (player.ui) player.ui.updateStats(player);
+    if (player.ui) {
+      if (typeof player.ui.updateStamina === 'function') player.ui.updateStamina(player);
+      player.ui.updateStats(player);
+    }
     return true;
   }
 

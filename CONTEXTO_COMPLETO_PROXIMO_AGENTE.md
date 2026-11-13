@@ -695,3 +695,30 @@ Ubicados en la zona lateral derecha, con volumen generoso y respuesta instantán
 7. **Rampa Suave de Calor Inicial:** Establecer una cota superior de debate en las primeras 4 salas de la run para no forzar `SENTENCIA_MAXIMA` inmediata a jugadores hábiles.
 
 ---
+
+
+## 25. SISTEMA UNIVERSAL DE ESTAMINA, FIX DOBLE JEFE Y MENTE COLMENA (v3.5 - APLICADO)
+
+### 25.1 Fix Quirúrgico del Doble Jefe en `BossRoom`
+* **Archivo:** `script.js` (`DungeonFloor.generate`, paso 7).
+* **Cambio:** Se omitió `room.populateRoomContent(...)` cuando `room.type === 'BOSS' || room instanceof BossRoom`, ejecutando únicamente `room.ensureDoorPassages(); continue;` para preservar el único Jefe instanciado en el constructor de `BossRoom`.
+
+### 25.2 Barra Universal de Estamina Estilo Dark Souls (Opción A)
+* **Jugador (`combat.js`, `script.js`, `weapons.js`, `relics.js`, `mobile_features.js`, `mobile_controls.js`, `index.html`, `index_mobile.html`):**
+  * Se reemplazó el sistema de cargas fijas (`dodgeCharges` / `maxDodgeCharges`) por estamina continua (`COMBAT_CONFIG`: `PLAYER_MAX_STAMINA = 100`, `DASH_STAMINA_COST = 30`, `STAMINA_REGEN_RATE = 42`, `STAMINA_REGEN_DELAY = 0.36s`, `STAMINA_EXHAUSTED_DELAY = 0.72s`).
+  * **Opción A:** La estamina solo restringe los Dashes. Si el jugador dispara o ataca con estamina en `0` (`CombatSystem.notifyPlayerAttacked`), sufre una penalización breve (`0.35s`) que ralentiza la regeneración (`x0.55`).
+  * `CombatSystem.triggerPerfectDodge` reembolsa `+28` de estamina al esquivar dentro de I-Frames y limpia el agotamiento.
+  * Talento `dodgeMastery` (+14% velocidad de regeneración por nivel), reliquias `MOON_FEATHER` (`+30` maxStamina, `-15%` coste de dash) y `ACCELERATED_SAND` (`+14` estamina al matar), y arquetipo móvil `pyro` (`baseMaxStamina = 135`, `baseDashCostMultiplier = 0.80`) actualizados al sistema continuo.
+  * HUD Desktop (`index.html`) y Móvil (`index_mobile.html`): barra `#hud-stamina-track` / `#hud-stamina-fill` / `#hud-stamina-text` (y `#mobile-stamina-fill` en móvil) actualizados de forma *throttled* por cambio de valor redondeado en `UIManager.updateStamina(player)`.
+* **Enemigos y Jefes (`script.js`):**
+  * `Enemy`: añade `maxStamina`, `stamina`, `staminaRegen`, `isExhausted`, `consumeStamina(cost, delay)` y `updateStamina(dt)` + barra sutil `drawStaminaBar(ctx)` debajo de la barra de vida en `Enemy.draw`, `FlyerEnemy.draw` y `ChargerEnemy.draw`. Enemigos agotados (`isExhausted`) pasan a rol `RECOVER` para orbitar/retroceder antes de volver a embestir o disparar.
+  * `Boss`: añade estamina base `160 + (sectionNumber - 1) * 20`, consume estamina al transicionar a estados activos/ofensivos (`Boss.transitionToState`), recupera estamina completa en `onPhaseChange()`, muestra estado `¡SIN ESTAMINA (RECUPERANDO)!` y actualiza la barra `#boss-stamina-fill` bajo `#boss-hp-fill`.
+
+### 25.3 Inteligencia Artificial de Enjambre Optimizada (`hive_mind.js`)
+* **Nuevo Módulo:** `hive_mind.js` (`HiveMindSystem`), cargado antes de `script.js` en `index.html` e `index_mobile.html`.
+* **El Oráculo Global (`updateOracle`):** Se ejecuta 1 vez por frame en `Room.update()`, responde 20 preguntas booleanas (`playerStaminaEmpty`, `playerStationary`, `playerCornered`, `noKillsYetStale`, `lowHiveDamageOutput`, `isLastSurvivor`, integración con `BrotherEye` / `JusticeEye`, etc.) y clasifica coordenadas vagas en grilla `3x3` (`NW`..`SE`).
+* **Tabla Contextual de 4 Salas:** Se reinicia automáticamente cada 4 salas (`roomsTracked >= 4`) y se sincroniza cuando `BrotherEye.resetShortTermMemory` ejecuta un reset (`HiveMindSystem.syncWithBrotherEyeReset`).
+* **Sub-Colmenas y Red Inter-Colmena (hitos de bajas cada 25%):** Divide directivas entre `MELEE`, `RANGED`, `CHARGER`, `ELITE` y `BOSS` (p. ej. límite dinámico de vanguardistas + flanqueo lateral) y actualiza tips y cadencia global al bajar al 75%, 50%, 25% y último vivo.
+* **Desincronización por Fibonacci (`[3, 5, 8, 1]` frames):** `HiveMindSystem.shouldRunLocalCheck(enemy)` escalona los cálculos locales de dirección y el bucle de separación $O(N^2)$ en `Enemy.update()`, reutilizando `cachedSteering`, `cachedSepVx` y `cachedSepVy` en los frames intermedios.
+* **Excepción de Sincronía y Feedback Visual Mínimo:** Ante casos extremos (jugador sin estamina, estático, sin bajas tras 5.5s, bajo daño de colmena tras 6.5s o último sobreviviente), rompe la espera Fibonacci y dispara un destello rojo sutil en el borde del canvas (`HiveMindSystem.drawOverlay`). Cuando queda 1 único enemigo (`isLastSurvivor`), brilla en amarillo (`drawLastSurvivorGlow`) con IA evasiva-agresiva.
+* **Consola `[F2]` y Exportación PDF (`dev_console.js`):** Se agregó la tarjeta `🐝 MENTE COLMENA & ORÁCULO GLOBAL` en `renderBrotherEyeTab` (luces de las 20 booleanas, sector 3x3, tip de red inter-colmena y % ahorro CPU Fibonacci) y la sección `2B` en `buildFullReportHtml()`.

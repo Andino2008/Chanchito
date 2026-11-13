@@ -216,7 +216,7 @@ const PIG_ARCHETYPES = {
     badge: 'CAÑÓN DE CRISTAL',
     cost: 450,
     color: '#f97316',
-    desc: 'Cañón de Cristal: 65 HP Máx (+40% Daño base). 3 Cargas de Esquiva. Deja un rastro de charcos de fuego incandescentes al esquivar.',
+    desc: 'Cañón de Cristal: 65 HP Máx (+40% Daño base). +35 Estamina Máx y menor coste de Dash. Deja un rastro de charcos de fuego al esquivar.',
     apply(player) {
       player.archetype = 'pyro';
       player.archetypeColor = '#f97316';
@@ -225,8 +225,11 @@ const PIG_ARCHETYPES = {
       player.hp = 65;
       player.shopDamageMultiplier *= 1.40;
       player.damageMultiplier *= 1.40;
-      player.maxDodgeCharges = 3;
-      player.dodgeCharges = 3;
+      player.baseMaxStamina = 135;
+      player.maxStamina = 135;
+      player.stamina = 135;
+      player.baseDashCostMultiplier = 0.80;
+      player.dashCostMultiplier = 0.80;
       if (player.elementalPool) {
         player.elementalPool.FIRE = Math.max(player.elementalPool.FIRE || 0, 1);
       }

@@ -2499,17 +2499,19 @@ const TALENT_DEFS = {
     id: 'dodgeMastery',
     name: 'Maestría de Esquiva',
     icon: '💨',
-    desc: 'Nv.1: -20% recarga de Dash | Nv.2: +1 Carga máxima (3 Dashes)',
+    desc: 'Nv.1: +25% regeneración de Estamina | Nv.2: +35 Estamina Máx y -15% coste de Dash',
     maxLevel: 2,
     costs: [40, 130],
     apply(player, level) {
       if (level >= 1) {
-        player.dodgeCooldownSingle *= 0.8;
-        player.dodgeCooldownEmpty *= 0.8;
+        player.staminaRegenMultiplier = (player.staminaRegenMultiplier || 1.0) * 1.25;
       }
       if (level >= 2) {
-        player.maxDodgeCharges = 3;
-        player.dodgeCharges = 3;
+        player.baseMaxStamina = (player.baseMaxStamina || 100) + 35;
+        player.maxStamina = player.baseMaxStamina;
+        player.stamina = player.maxStamina;
+        player.baseDashCostMultiplier = Math.max(0.45, (player.baseDashCostMultiplier || 1.0) * 0.85);
+        player.dashCostMultiplier = player.baseDashCostMultiplier;
       }
     }
   },
@@ -3041,6 +3043,39 @@ class Enemy extends Entity {
 
     // Retardo inicial de reacción al entrar a una nueva sala (dar tiempo de reacción al jugador)
     this.reactionDelay = 0;
+
+    // Sistema Universal de Estamina Enemiga & Desincronización Fibonacci (v3.5)
+    this.maxStamina = isBoss ? 140 : (behaviorType === 'DASHER' ? 110 : 100);
+    this.stamina = this.maxStamina;
+    this.staminaRegen = isBoss ? 25 : 22;
+    this.isExhausted = false;
+    this.staminaExhaustedRecoveryThreshold = this.maxStamina * 0.50;
+    this.cachedSepVx = 0;
+    this.cachedSepVy = 0;
+    this.isLastSurvivor = false;
+    if (typeof HiveMindSystem !== 'undefined' && HiveMindSystem && typeof HiveMindSystem.initEnemyHiveState === 'function') {
+      HiveMindSystem.initEnemyHiveState(this);
+    }
+  }
+
+  consumeStamina(amount) {
+    if (!amount || amount <= 0) return true;
+    this.stamina = Math.max(0, this.stamina - amount);
+    if (this.stamina <= 0) {
+      this.stamina = 0;
+      this.isExhausted = true;
+    }
+    return !this.isExhausted;
+  }
+
+  updateStamina(dt) {
+    if (this.stamina < this.maxStamina) {
+      const regenMult = this.isExhausted ? 1.28 : 1.0;
+      this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegen * regenMult * dt);
+      if (this.isExhausted && this.stamina >= this.staminaExhaustedRecoveryThreshold) {
+        this.isExhausted = false;
+      }
+    }
   }
 
   assignElementalProfile() {
@@ -3084,6 +3119,9 @@ class Enemy extends Entity {
     const finalDamage = rawDamage * defenseMultiplier * affinityMultiplier * hunterMult;
 
     this.hp -= finalDamage;
+    if (finalDamage > 0 && typeof HiveMindSystem !== 'undefined' && HiveMindSystem && typeof HiveMindSystem.recordDamageToHive === 'function') {
+      HiveMindSystem.recordDamageToHive(finalDamage);
+    }
     this.knockbackVx += kbVx;
     this.knockbackVy += kbVy;
     this.hitFlashTimer = 0.08;
@@ -3103,6 +3141,9 @@ class Enemy extends Entity {
   applyDoTDamage(rawAmount, element = 'NONE') {
     if (this.markedForDeletion || this.isCycleInvulnerable || rawAmount <= 0) return 0;
     this.hp -= rawAmount;
+    if (typeof HiveMindSystem !== 'undefined' && HiveMindSystem && typeof HiveMindSystem.recordDamageToHive === 'function') {
+      HiveMindSystem.recordDamageToHive(rawAmount);
+    }
     if (this.hp <= 0) {
       this.hp = 0;
       this.markedForDeletion = true;
@@ -3312,7 +3353,7 @@ class Enemy extends Entity {
     return closest;
   }
 
-  computeAIMovement(dt, targetEntity, miracleEffect) {
+  computeAIMovement(dt, targetEntity, miracleEffect, room, allEnemies) {
     const toTarget = MathUtils.normalize(targetEntity.x - this.x, targetEntity.y - this.y);
     const perpX = -toTarget.y;
     const perpY = toTarget.x;
@@ -3321,27 +3362,52 @@ class Enemy extends Entity {
     let moveVx = 0;
     let moveVy = 0;
 
+    const useHive = !miracleEffect && typeof HiveMindSystem !== 'undefined';
+    let runLocalCheck = true;
+    if (useHive) {
+      runLocalCheck = HiveMindSystem.shouldRunLocalCheck(this);
+      this._fibRunThisFrame = runLocalCheck;
+    } else {
+      this._fibRunThisFrame = true;
+    }
+
     if (this.behaviorType === 'ERRATIC' || miracleEffect) {
-      const waveOffset =
-        Math.sin(this.aiTimer * this.waveFrequency) *
-        (miracleEffect ? this.waveAmplitude * 0.35 : this.waveAmplitude);
-      moveVx = toTarget.x * this.speed * speedBoost + perpX * waveOffset;
-      moveVy = toTarget.y * this.speed * speedBoost + perpY * waveOffset;
+      if (useHive && !miracleEffect) {
+        let directive = this.cachedSteering;
+        if (runLocalCheck || !directive) {
+          directive = HiveMindSystem.computeTacticalDirective(this, targetEntity, room, allEnemies);
+        }
+        const waveMod = Math.sin(this.aiTimer * this.waveFrequency) * 0.14;
+        moveVx = directive.moveVx * speedBoost + perpX * (this.waveAmplitude * waveMod);
+        moveVy = directive.moveVy * speedBoost + perpY * (this.waveAmplitude * waveMod);
+      } else {
+        const waveOffset =
+          Math.sin(this.aiTimer * this.waveFrequency) *
+          (miracleEffect ? this.waveAmplitude * 0.35 : this.waveAmplitude);
+        moveVx = toTarget.x * this.speed * speedBoost + perpX * waveOffset;
+        moveVy = toTarget.y * this.speed * speedBoost + perpY * waveOffset;
+      }
     } else if (this.behaviorType === 'DASHER' || this.behaviorType === 'BOSS_MIXED') {
       this.stateTimer -= dt;
 
       if (this.dashState === 'APPROACH') {
-        const wave =
-          this.behaviorType === 'BOSS_MIXED'
-            ? Math.sin(this.aiTimer * this.waveFrequency) * this.waveAmplitude
-            : 0;
-        moveVx = toTarget.x * (this.speed * 0.85) + perpX * wave;
-        moveVy = toTarget.y * (this.speed * 0.85) + perpY * wave;
+        if (this.isExhausted) {
+          // Agotado: retrocede/orbita brevemente hasta recuperar estamina
+          moveVx = (-toTarget.x * 0.45 + perpX * (this.flankSign || 1) * 0.75) * (this.speed * 0.72);
+          moveVy = (-toTarget.y * 0.45 + perpY * (this.flankSign || 1) * 0.75) * (this.speed * 0.72);
+        } else {
+          const wave =
+            this.behaviorType === 'BOSS_MIXED'
+              ? Math.sin(this.aiTimer * this.waveFrequency) * this.waveAmplitude
+              : 0;
+          moveVx = toTarget.x * (this.speed * 0.85) + perpX * wave;
+          moveVy = toTarget.y * (this.speed * 0.85) + perpY * wave;
 
-        if (this.stateTimer <= 0) {
-          this.dashState = 'WINDUP';
-          this.stateTimer = 0.45;
-          this.dashTargetDir = { x: toTarget.x, y: toTarget.y };
+          if (this.stateTimer <= 0 && (this.stamina >= 28 || this.isLastSurvivor)) {
+            this.dashState = 'WINDUP';
+            this.stateTimer = 0.45;
+            this.dashTargetDir = { x: toTarget.x, y: toTarget.y };
+          }
         }
       } else if (this.dashState === 'WINDUP') {
         if (this.stateTimer > 0.2) {
@@ -3351,6 +3417,7 @@ class Enemy extends Entity {
         moveVy = 0;
 
         if (this.stateTimer <= 0) {
+          this.consumeStamina(32, 1.35);
           this.dashState = 'DASH';
           this.stateTimer = 0.36;
         }
@@ -3373,6 +3440,7 @@ class Enemy extends Entity {
     if (this.hitFlashTimer > 0) this.hitFlashTimer -= dt;
     if (this.ccImmunityTimer > 0) this.ccImmunityTimer = Math.max(0, this.ccImmunityTimer - dt);
     this.aiTimer += dt;
+    this.updateStamina(dt);
 
     // Retardo de reacción inicial al entrar el jugador a la sala (0.25s para evaluar la situación)
     if (this.reactionDelay > 0) {
@@ -3487,7 +3555,7 @@ class Enemy extends Entity {
       this.knockbackVx = 0;
       this.knockbackVy = 0;
     } else {
-      let { moveVx, moveVy } = this.computeAIMovement(dt, targetEntity, miracleEffect, room);
+      let { moveVx, moveVy } = this.computeAIMovement(dt, targetEntity, miracleEffect, room, allEnemies);
 
       // Reducción de velocidad ambiental (ej. 50% al pisar un `PoisonPuddle` en v1.9) y slow elemental en Jefes
       const envSpeedMult =
@@ -3528,18 +3596,27 @@ class Enemy extends Entity {
       }
 
       if (!miracleEffect) {
-        for (const other of allEnemies) {
-          if (other === this || other.markedForDeletion) continue;
-          const dx = this.x - other.x;
-          const dy = this.y - other.y;
-          const dist = Math.hypot(dx, dy);
-          const minSep = this.radius + other.radius + 4;
-          if (dist > 0 && dist < minSep) {
-            const pushFactor = ((minSep - dist) / minSep) * 140;
-            moveVx += (dx / dist) * pushFactor;
-            moveVy += (dy / dist) * pushFactor;
+        // Optimización Fibonacci: el bucle O(N^2) de separación se recalcula en turnos escalonados
+        if (this._fibRunThisFrame !== false || allEnemies.length <= 4 || this.cachedSepVx === undefined) {
+          let sepVx = 0;
+          let sepVy = 0;
+          for (const other of allEnemies) {
+            if (other === this || other.markedForDeletion) continue;
+            const dx = this.x - other.x;
+            const dy = this.y - other.y;
+            const dist = Math.hypot(dx, dy);
+            const minSep = this.radius + other.radius + 4;
+            if (dist > 0 && dist < minSep) {
+              const pushFactor = ((minSep - dist) / minSep) * 140;
+              sepVx += (dx / dist) * pushFactor;
+              sepVy += (dy / dist) * pushFactor;
+            }
           }
+          this.cachedSepVx = sepVx;
+          this.cachedSepVy = sepVy;
         }
+        moveVx += this.cachedSepVx || 0;
+        moveVy += this.cachedSepVy || 0;
       }
 
       this.vx = moveVx + this.knockbackVx;
@@ -3711,6 +3788,8 @@ class Enemy extends Entity {
       ctx.stroke();
     }
 
+    this.drawLastSurvivorGlow(ctx);
+
     let bodyFill = this.color;
     if (this.hitFlashTimer > 0) {
       bodyFill = '#ffffff';
@@ -3728,6 +3807,8 @@ class Enemy extends Entity {
       ? '#be123c'
       : this.isBoss
       ? '#facc15'
+      : this.isLastSurvivor
+      ? '#fde047'
       : '#14532d';
 
     this.drawBodyShape(ctx, bodyFill, bodyStroke, this.isBoss ? 3.5 : 2);
@@ -3755,6 +3836,8 @@ class Enemy extends Entity {
     ctx.fillRect(this.x - barW / 2, this.y - this.radius - 13, barW, barH);
     ctx.fillStyle = this.isElite ? '#e879f9' : '#4ade80';
     ctx.fillRect(this.x - barW / 2, this.y - this.radius - 13, barW * hpRatio, barH);
+
+    this.drawStaminaBar(ctx, barW);
 
     if (this.freezeMeter > 0) {
       const freezeRatio = MathUtils.clamp(this.freezeMeter / this.maxFreezeMeter, 0, 1);
@@ -3790,6 +3873,31 @@ class Enemy extends Entity {
 
     ctx.restore();
   }
+
+  drawLastSurvivorGlow(ctx) {
+    if (!this.isLastSurvivor || this.markedForDeletion) return;
+    const pulse = 0.55 + Math.sin((this.aiTimer || 0) * 10) * 0.3;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius + 9 + pulse * 3, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(250, 204, 21, ${(0.22 * pulse).toFixed(3)})`;
+    ctx.fill();
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawStaminaBar(ctx, barW) {
+    if (this.isBoss || !this.maxStamina) return;
+    const w = barW || Math.max(24, this.radius * 2);
+    const ratio = MathUtils.clamp(this.stamina / this.maxStamina, 0, 1);
+    const y = this.y - this.radius - 8;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(this.x - w / 2, y, w, 2.5);
+    ctx.fillStyle = this.isExhausted ? '#ef4444' : '#f59e0b';
+    ctx.fillRect(this.x - w / 2, y, w * ratio, 2.5);
+  }
 }
 
 class ShooterEnemy extends Enemy {
@@ -3804,7 +3912,7 @@ class ShooterEnemy extends Enemy {
     this.aimAngle = 0;
   }
 
-  computeAIMovement(dt, targetEntity, miracleEffect, room) {
+  computeAIMovement(dt, targetEntity, miracleEffect, room, allEnemies) {
     const dx = targetEntity.x - this.x;
     const dy = targetEntity.y - this.y;
     const norm = MathUtils.normalize(dx, dy);
@@ -3812,28 +3920,51 @@ class ShooterEnemy extends Enemy {
     this.aimAngle = Math.atan2(norm.y, norm.x);
 
     if (miracleEffect) {
+      this._fibRunThisFrame = true;
       return {
         moveVx: norm.x * this.speed * 1.35,
         moveVy: norm.y * this.speed * 1.35,
       };
     }
 
-    let moveVx = 0;
-    let moveVy = 0;
-    const minIdealDist = this.preferredDistance - 20;
-    const maxIdealDist = this.preferredDistance + this.stopBandTolerance;
-
-    if (dist < minIdealDist) {
-      moveVx = -norm.x * this.speed * 1.05;
-      moveVy = -norm.y * this.speed * 1.05;
-    } else if (dist > maxIdealDist) {
-      moveVx = norm.x * this.speed * 0.85;
-      moveVy = norm.y * this.speed * 0.85;
+    const useHive = typeof HiveMindSystem !== 'undefined';
+    let runLocalCheck = true;
+    if (useHive) {
+      runLocalCheck = HiveMindSystem.shouldRunLocalCheck(this);
+      this._fibRunThisFrame = runLocalCheck;
+    } else {
+      this._fibRunThisFrame = true;
     }
 
+    let moveVx = 0;
+    let moveVy = 0;
+    if (useHive) {
+      let directive = this.cachedSteering;
+      if (runLocalCheck || !directive) {
+        directive = HiveMindSystem.computeTacticalDirective(this, targetEntity, room, allEnemies);
+      }
+      moveVx = directive.moveVx;
+      moveVy = directive.moveVy;
+    } else {
+      const minIdealDist = this.preferredDistance - 20;
+      const maxIdealDist = this.preferredDistance + this.stopBandTolerance;
+      if (dist < minIdealDist) {
+        moveVx = -norm.x * this.speed * 1.05;
+        moveVy = -norm.y * this.speed * 1.05;
+      } else if (dist > maxIdealDist) {
+        moveVx = norm.x * this.speed * 0.85;
+        moveVy = norm.y * this.speed * 0.85;
+      }
+    }
+
+    const rangedMult = useHive && HiveMindSystem.interHiveNetwork
+      ? (HiveMindSystem.interHiveNetwork.rangedCooldownMult || 1.0)
+      : 1.0;
+
     this.shootTimer -= dt;
-    if (this.shootTimer <= 0 && room) {
-      this.shootTimer = this.shootInterval;
+    if (this.shootTimer <= 0 && room && (!this.isExhausted || this.isLastSurvivor)) {
+      this.consumeStamina(22, 1.1);
+      this.shootTimer = this.shootInterval * rangedMult;
       const spawnX = this.x + norm.x * (this.radius + 8);
       const spawnY = this.y + norm.y * (this.radius + 8);
       room.enemyProjectiles.push(
@@ -4047,9 +4178,14 @@ class FlyerEnemy extends Enemy {
     super.update(dt, player, allEnemies, room);
     if (this.markedForDeletion || this.reactionDelay > 0) return;
 
+    const rangedMult = typeof HiveMindSystem !== 'undefined' && HiveMindSystem.interHiveNetwork
+      ? (HiveMindSystem.interHiveNetwork.rangedCooldownMult || 1.0)
+      : 1.0;
+
     this.shootTimer -= dt;
-    if (this.shootTimer <= 0) {
-      this.shootTimer = 2.5 + Math.random() * 0.8;
+    if (this.shootTimer <= 0 && (!this.isExhausted || this.isLastSurvivor)) {
+      this.consumeStamina(20, 1.0);
+      this.shootTimer = (2.5 + Math.random() * 0.8) * rangedMult;
       const dx = player.x - this.x;
       const dy = player.y - this.y;
       const norm = MathUtils.normalize(dx, dy);
@@ -4065,6 +4201,7 @@ class FlyerEnemy extends Enemy {
   }
 
   draw(ctx) {
+    this.drawLastSurvivorGlow(ctx);
     ctx.save();
     const wingFlap = Math.sin(this.aiTimer * 16) * 7;
     ctx.fillStyle = 'rgba(192, 132, 252, 0.45)';
@@ -4083,7 +4220,7 @@ class FlyerEnemy extends Enemy {
     ctx.fillStyle = this.hitFlashTimer > 0 ? '#ffffff' : this.color;
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#e9d5ff';
+    ctx.strokeStyle = this.isLastSurvivor ? '#fde047' : '#e9d5ff';
     ctx.stroke();
 
     ctx.beginPath();
@@ -4092,6 +4229,7 @@ class FlyerEnemy extends Enemy {
     ctx.fill();
 
     ctx.restore();
+    this.drawStaminaBar(ctx);
   }
 }
 
@@ -4115,6 +4253,8 @@ class ChargerEnemy extends Enemy {
 
   update(dt, player, allEnemies, room) {
     if (this.markedForDeletion) return;
+    this.aiTimer += dt;
+    this.updateStamina(dt);
     if (this.reactionDelay > 0) {
       this.reactionDelay -= dt;
       return;
@@ -4125,7 +4265,7 @@ class ChargerEnemy extends Enemy {
       const dy = player.y - this.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist < 420 && (Math.abs(dx) < 28 || Math.abs(dy) < 28)) {
+      if ((!this.isExhausted || this.isLastSurvivor) && dist < 420 && (Math.abs(dx) < 28 || Math.abs(dy) < 28)) {
         this.state = 'WINDUP';
         this.stateTimer = 0.42;
         this.chargeDir = MathUtils.normalize(dx, dy);
@@ -4134,9 +4274,21 @@ class ChargerEnemy extends Enemy {
         return;
       }
 
-      const norm = MathUtils.normalize(dx, dy);
-      this.vx = norm.x * 85;
-      this.vy = norm.y * 85;
+      const useHive = typeof HiveMindSystem !== 'undefined';
+      if (useHive) {
+        const runCheck = HiveMindSystem.shouldRunLocalCheck(this);
+        if (runCheck || !this.cachedSteering) {
+          HiveMindSystem.computeTacticalDirective(this, player, room, allEnemies);
+        }
+        const dir = this.cachedSteering;
+        const speedScale = 85 / Math.max(1, this.speed);
+        this.vx = (dir ? dir.moveVx * speedScale : 0);
+        this.vy = (dir ? dir.moveVy * speedScale : 0);
+      } else {
+        const norm = MathUtils.normalize(dx, dy);
+        this.vx = norm.x * 85;
+        this.vy = norm.y * 85;
+      }
       this.x += this.vx * dt;
       this.y += this.vy * dt;
     } else if (this.state === 'WINDUP') {
@@ -4144,6 +4296,7 @@ class ChargerEnemy extends Enemy {
       this.vx = 0;
       this.vy = 0;
       if (this.stateTimer <= 0) {
+        this.consumeStamina(42, 1.4);
         this.state = 'CHARGE';
         this.chargeDistance = 0;
       }
@@ -4191,13 +4344,14 @@ class ChargerEnemy extends Enemy {
   }
 
   draw(ctx) {
+    this.drawLastSurvivorGlow(ctx);
     ctx.save();
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fillStyle = this.hitFlashTimer > 0 ? '#ffffff' : this.color;
     ctx.fill();
     ctx.lineWidth = 2.5;
-    ctx.strokeStyle = this.state === 'WINDUP' ? '#fef08a' : '#7f1d1d';
+    ctx.strokeStyle = this.isLastSurvivor ? '#fde047' : (this.state === 'WINDUP' ? '#fef08a' : '#7f1d1d');
     ctx.stroke();
 
     const facingAngle = Math.atan2(this.chargeDir.y || 1, this.chargeDir.x || 0);
@@ -4224,6 +4378,7 @@ class ChargerEnemy extends Enemy {
       ctx.stroke();
     }
     ctx.restore();
+    this.drawStaminaBar(ctx);
   }
 }
 
@@ -4451,12 +4606,20 @@ class Boss extends Enemy {
     this.hasFrontalArmor = false;
     this.frontalDamageMultiplier = 0.2; // 80% de reducción frontal (recibe 20%)
     this.lastHitWasBlocked = false;
+
+    // Estamina Universal v3.5 para Jefes
+    this.maxStamina = 160 + Math.max(0, sectionNumber - 1) * 20;
+    this.stamina = this.maxStamina;
+    this.staminaRegen = 30;
+    this.isExhausted = false;
+    this.staminaRegenDelayTimer = 0;
   }
 
   getDefenseStatusText() {
     if (this.isBurrowed) return 'Bajo Tierra (INVULNERABLE)';
     if (this.isGuarding) return 'Guardia Celestial (CONTRAATAQUE)';
     if (this.isStaggered) return '¡ATURDIDO / EXPUESTO (+25% DMG)!';
+    if (this.isExhausted) return '¡SIN ESTAMINA (RECUPERANDO)!';
     if (this.orbitShields && this.orbitShields.length > 0) {
       return this.orbitExpanded ? 'Escudos Abiertos (¡VULNERABLE!)' : '4 Escudos Orbitales + Clon';
     }
@@ -4472,7 +4635,8 @@ class Boss extends Enemy {
    */
   transitionToState(newState, duration = 1.0) {
     this.currentState = newState;
-    this.stateTimer = duration;
+    const exhaustedSlow = this.isExhausted && (newState.includes('IDLE') || newState.includes('NEUTRAL') || newState.includes('CHASE')) ? 1.35 : 1.0;
+    this.stateTimer = duration * exhaustedSlow;
     this.telegraphs = [];
     this.isWindup = false;
     this.windupProgress = 0;
@@ -4481,6 +4645,26 @@ class Boss extends Enemy {
       this.isStaggered = false;
       this.staggerVulnerableMult = 1.0;
     }
+
+    // Consumo de estamina del Jefe al ejecutar habilidades activas o telegrafiados ofensivos
+    const isPassiveState =
+      newState === 'IDLE' ||
+      newState === 'NEUTRAL' ||
+      newState.includes('STUNNED') ||
+      newState.includes('RECOVERY') ||
+      newState.includes('EXHAUSTED') ||
+      newState.includes('CHASE');
+    if (!isPassiveState) {
+      const heavySkill =
+        newState.includes('DASH') ||
+        newState.includes('SLAM') ||
+        newState.includes('BEAM') ||
+        newState.includes('STORM') ||
+        newState.includes('METEOR') ||
+        newState.includes('LAVA');
+      this.consumeStamina(heavySkill ? 34 : 20, 1.35);
+    }
+
     if (newState.includes('TELEGRAPH') || newState.includes('WINDUP')) {
       if (typeof soundManager !== 'undefined' && soundManager) {
         soundManager.playProcedural('telegraph', { volume: 0.35 });
@@ -4520,6 +4704,9 @@ class Boss extends Enemy {
     this.staggerVulnerableMult = 1.0;
     this.dpsMeter = 0;
     this.lastDpsArmorRatio = 1.0;
+    this.stamina = this.maxStamina;
+    this.isExhausted = false;
+    this.staminaRegenDelayTimer = 0;
     if (this.onBossStateChanged) {
       this.onBossStateChanged(this);
     }
@@ -7161,15 +7348,18 @@ class Player extends Entity {
     this.extraCoinChance = 0.0;
     this.enemySpawnMultiplier = 1.0;
 
-    // Estadísticas adicionales de v2.1 / v2.9 (Crítico, Esquivas con Cargas + Perfect Dodge)
+    // Estadísticas adicionales de v2.1 / v3.5 (Crítico, Estamina Souls para Dash + Perfect Dodge)
     this.baseCritChance = 0.0;
     this.critChance = 0.0;
-    this.maxDodgeCharges = 2; // 2 cargas de esquiva instantáneas de base
-    this.dodgeCharges = 2;
-    this.dodgeCooldownSingle = 1.45; // Recarga rápida de 1.45s si aún le queda otra carga
-    this.dodgeCooldownEmpty = 1.95;  // Recuperación equilibrada de 1.95s si agotó ambas cargas
-    this.dodgeCooldownDuration = 1.45;
-    this.dodgeCooldownTimer = 0;
+    this.baseMaxStamina = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.PLAYER_MAX_STAMINA) || 100;
+    this.maxStamina = this.baseMaxStamina;
+    this.stamina = this.maxStamina;
+    this.baseDashCostMultiplier = 1.0;
+    this.dashCostMultiplier = 1.0;
+    this.staminaRegenRate = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.STAMINA_REGEN_RATE) || 42;
+    this.staminaRegenDelayTimer = 0;
+    this.staminaAttackPenaltyTimer = 0;
+    this.isStaminaExhausted = false;
     this.dodgeActiveTimer = 0;
     this.dashIFrameTimer = 0;
     this.dashGlideTimer = 0;
@@ -7215,6 +7405,11 @@ class Player extends Entity {
     this.itemManager.applyPassiveStats();
   }
 
+  getDashStaminaCost() {
+    const baseCost = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.DASH_STAMINA_COST) || 30;
+    return Math.max(10, Math.round(baseCost * (this.dashCostMultiplier || 1.0)));
+  }
+
   /**
    * Altar de la Mente (`NexusRoom` NG+1):
    * Conserva todas las Reliquias (y sus niveles), pero resetea las estadísticas base
@@ -7223,6 +7418,8 @@ class Player extends Entity {
   resetBaseStatsKeepRelics() {
     this.baseSpeed = 270;
     this.baseMaxHp = 100;
+    this.baseMaxStamina = (typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.PLAYER_MAX_STAMINA) || 100;
+    this.baseDashCostMultiplier = 1.0;
     this.baseDefense = 0;
     this.baseCritChance = 0.0;
     this.shopDamageMultiplier = 1.0;
@@ -7231,6 +7428,8 @@ class Player extends Entity {
     this.poisonTimer = 0;
     this.itemManager.applyPassiveStats();
     this.hp = this.maxHp;
+    this.stamina = this.maxStamina;
+    this.isStaminaExhausted = false;
     if (this.ui) {
       this.ui.updateHealth(this);
       this.ui.updateStats(this);
@@ -7243,8 +7442,10 @@ class Player extends Entity {
    */
   clearRelicsKeepBaseStats() {
     this.poisonTimer = 0;
-    this.maxDodgeCharges = 2;
-    this.dodgeCharges = 2;
+    this.dashCostMultiplier = this.baseDashCostMultiplier || 1.0;
+    this.maxStamina = this.baseMaxStamina || 100;
+    this.stamina = this.maxStamina;
+    this.isStaminaExhausted = false;
     this.extraUpgradeChoices = 0;
     this.relicChanceMultiplier = 1.0;
     const sacrificedCount = this.itemManager && Array.isArray(this.itemManager.ownedRelics)
@@ -7518,6 +7719,9 @@ class Player extends Entity {
     const recordEyeDamage = () => {
       if (isSacrifice) return;
       const totalApplied = Math.max(0, vitBefore - (this.hp + this.shield));
+      if (totalApplied > 0 && typeof HiveMindSystem !== 'undefined') {
+        HiveMindSystem.recordDamageToPlayer(totalApplied);
+      }
       if (
         totalApplied > 0 &&
         typeof BrotherEye !== 'undefined' &&
@@ -7580,24 +7784,32 @@ class Player extends Entity {
       this.dashGlideTimer = Math.max(0, this.dashGlideTimer - dt);
     }
 
-    // Recarga inteligente de Impulso Evasivo (`[SHIFT]` / `[F]`):
-    // 2 cargas base instantáneas; Evasión Perfecta reembolsa enfriamiento.
-    if (this.dodgeCharges < this.maxDodgeCharges) {
-      if (this.dodgeCooldownTimer <= 0) {
-        this.dodgeCooldownTimer = this.dodgeCharges === 0 ? this.dodgeCooldownEmpty : this.dodgeCooldownSingle;
+    // Regeneración continua de Estamina (Dark Souls simplona, Opción A):
+    // Solo restringe Dashes; si dispara con estamina en 0 recarga más lento.
+    if (this.staminaAttackPenaltyTimer > 0) {
+      this.staminaAttackPenaltyTimer = Math.max(0, this.staminaAttackPenaltyTimer - dt);
+    }
+    if (this.staminaRegenDelayTimer > 0) {
+      this.staminaRegenDelayTimer = Math.max(0, this.staminaRegenDelayTimer - dt);
+    } else if (this.stamina < this.maxStamina && this.dodgeActiveTimer <= 0) {
+      const baseRegen = this.staminaRegenRate || ((typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.STAMINA_REGEN_RATE) || 42);
+      const talentMult = (typeof MetaProgressionManager !== 'undefined' && MetaProgressionManager.getTalentLevel)
+        ? 1 + (MetaProgressionManager.getTalentLevel('dodgeMastery') || 0) * 0.14
+        : 1.0;
+      const penaltyMult = this.staminaAttackPenaltyTimer > 0
+        ? ((typeof COMBAT_CONFIG !== 'undefined' && COMBAT_CONFIG.STAMINA_EMPTY_ATTACK_PENALTY_MULT) || 0.55)
+        : 1.0;
+      const prevStam = this.stamina;
+      this.stamina = Math.min(this.maxStamina, this.stamina + baseRegen * talentMult * penaltyMult * dt);
+      if (this.isStaminaExhausted && this.stamina >= Math.min(this.maxStamina, this.getDashStaminaCost())) {
+        this.isStaminaExhausted = false;
       }
-      this.dodgeCooldownTimer -= dt;
-      if (this.dodgeCooldownTimer <= 0) {
-        this.dodgeCharges = Math.min(this.maxDodgeCharges, this.dodgeCharges + 1);
-        this.dodgeCooldownTimer =
-          this.dodgeCharges < this.maxDodgeCharges ? this.dodgeCooldownSingle : 0;
-        if (room && typeof room.spawnParticle === 'function') {
-          room.spawnParticle(this.x, this.y, '#38bdf8', 6);
-        }
-        if (this.ui) this.ui.updateStats(this);
+      if (this.stamina >= this.maxStamina && prevStam < this.maxStamina && room && typeof room.spawnParticle === 'function') {
+        room.spawnParticle(this.x, this.y, '#38bdf8', 5);
       }
-    } else {
-      this.dodgeCooldownTimer = 0;
+    }
+    if (this.ui && typeof this.ui.updateStamina === 'function') {
+      this.ui.updateStamina(this);
     }
 
     // Procesar DoT de Veneno (`PoisonPuddle` v1.9: dura 4 segundos tras salir del charco)
@@ -7616,13 +7828,15 @@ class Player extends Entity {
 
     if (typeof CombatSystem !== 'undefined') {
       CombatSystem.handlePlayerDash(this, input, room, aimState, moveVec);
-    } else if (input.consumeDodgeTrigger() && this.dodgeCharges > 0 && this.dodgeActiveTimer <= 0) {
+    } else if (input.consumeDodgeTrigger() && this.dodgeActiveTimer <= 0 && !this.isStaminaExhausted && this.stamina > 0) {
+      const dashCost = this.getDashStaminaCost();
       this.cancelCurrentAttack();
-      this.dodgeCharges -= 1;
-      if (this.dodgeCharges === 0) {
-        this.dodgeCooldownTimer = this.dodgeCooldownEmpty;
-      } else if (this.dodgeCooldownTimer <= 0) {
-        this.dodgeCooldownTimer = this.dodgeCooldownSingle;
+      this.stamina = Math.max(0, this.stamina - dashCost);
+      if (this.stamina <= 0) {
+        this.isStaminaExhausted = true;
+        this.staminaRegenDelayTimer = 0.72;
+      } else {
+        this.staminaRegenDelayTimer = 0.36;
       }
       this.dodgeActiveTimer = 0.20;
       this.dashIFrameTimer = 0.30;
@@ -7635,7 +7849,7 @@ class Player extends Entity {
       if (room) {
         room.spawnParticle(this.x, this.y, '#93c5fd', 10);
       }
-      if (this.ui) this.ui.updateStats(this);
+      if (this.ui && typeof this.ui.updateStamina === 'function') this.ui.updateStamina(this);
     }
 
     // Durante el Dash o sus I-Frames, el jugador ignora slows ambientales (zonas de gravedad / charcos)
@@ -9083,6 +9297,9 @@ class Room {
     if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
       BrotherEye.onRoomTick(dt, this, player);
     }
+    if (typeof HiveMindSystem !== 'undefined') {
+      HiveMindSystem.updateOracle(dt, this, player);
+    }
 
     if (this.chest) {
       this.chest.update(dt, player, this);
@@ -9221,6 +9438,9 @@ class Room {
             enemy instanceof Boss
           );
         }
+        if (typeof HiveMindSystem !== 'undefined') {
+          HiveMindSystem.recordEnemyKilled(this);
+        }
 
         if (player && player.itemManager) {
           player.itemManager.onKill(enemy, this);
@@ -9316,6 +9536,9 @@ class Room {
     const hasActiveChallenge = Boolean(this.hazards && this.hazards.some(h => typeof ChallengeMonolith !== 'undefined' && h instanceof ChallengeMonolith && h.isActive));
     if (!this.cleared && this.enemies.length === 0 && !hasActiveChallenge) {
       this.cleared = true;
+      if (typeof HiveMindSystem !== 'undefined') {
+        HiveMindSystem.onRoomCleared(this);
+      }
       if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
         BrotherEye.onRoomExited(this, player, true);
       }
@@ -9324,6 +9547,13 @@ class Room {
       }
       if (window.RunSaveManager && window.activeGameInstance) {
         window.RunSaveManager.save(window.activeGameInstance);
+      }
+    }
+
+    if (this.type === 'BOSS' && !this.cleared && player && player.ui && typeof player.ui.updateBossStamina === 'function') {
+      const activeBoss = this.enemies.find((e) => e instanceof Boss && !e.markedForDeletion);
+      if (activeBoss) {
+        player.ui.updateBossStamina(activeBoss);
       }
     }
 
@@ -9889,6 +10119,10 @@ class Room {
     }
     // Proyectiles enemigos siempre en la capa superior para lectura nítida sobre cualquier efecto
     for (const eProj of this.enemyProjectiles) eProj.draw(ctx);
+
+    if (typeof HiveMindSystem !== 'undefined') {
+      HiveMindSystem.drawOverlay(ctx, this);
+    }
   }
 
   drawDoors(ctx) {
@@ -10945,6 +11179,11 @@ class DungeonFloor {
 
     // 7. Despejar cualquier foso en los umbrales de puertas activas y poblar contenido (Plantillas 13x9 o Procedural)
     for (const room of this.rooms.values()) {
+      // Fix Double Boss (v3.5): BossRoom ya genera su único Jefe en su constructor; evitar que una plantilla sobreescriba/duplique el Jefe.
+      if (room.type === 'BOSS' || room instanceof BossRoom) {
+        room.ensureDoorPassages();
+        continue;
+      }
       if (
         room.assignedTemplateId &&
         typeof LevelTemplateSystem !== 'undefined' &&
@@ -11020,6 +11259,7 @@ class UIManager {
       bossName: document.getElementById('boss-name'),
       bossHpText: document.getElementById('boss-hp-text'),
       bossHpFill: document.getElementById('boss-hp-fill'),
+      bossStaminaFill: document.getElementById('boss-stamina-fill'),
       bossFsmState: document.getElementById('boss-fsm-state'),
       bossArmorState: document.getElementById('boss-armor-state'),
 
@@ -11030,7 +11270,11 @@ class UIManager {
 
       levelBanner: document.getElementById('hud-level-banner'),
       collectedRelicsStrip: document.getElementById('collected-relics-strip'),
-      hudDodgePips: document.getElementById('hud-dodge-pips'),
+      hudStaminaTrack: document.getElementById('hud-stamina-track'),
+      hudStaminaFill: document.getElementById('hud-stamina-fill'),
+      hudStaminaText: document.getElementById('hud-stamina-text'),
+      mobileStaminaTrack: document.getElementById('mobile-stamina-track'),
+      mobileStaminaFill: document.getElementById('mobile-stamina-fill'),
       hudWeaponCard: document.getElementById('hud-weapon-card'),
       hudWeaponSymbol: document.getElementById('hud-weapon-symbol'),
       hudWeaponMode: document.getElementById('hud-weapon-mode'),
@@ -11479,6 +11723,44 @@ class UIManager {
     }
   }
 
+  updateStamina(player) {
+    if (!player) return;
+    const cur = Math.max(0, Math.round(player.stamina ?? 0));
+    const max = Math.max(1, Math.round(player.maxStamina ?? 100));
+    const exhausted = Boolean(player.isStaminaExhausted || cur <= 0);
+    const penalty = Boolean(player.staminaAttackPenaltyTimer > 0);
+    const dashCost = typeof player.getDashStaminaCost === 'function' ? player.getDashStaminaCost() : 30;
+    const key = `${cur}|${max}|${exhausted ? 1 : 0}|${penalty ? 1 : 0}|${dashCost}`;
+    if (this._lastStaminaKey === key) return;
+    this._lastStaminaKey = key;
+
+    const pct = MathUtils.clamp((cur / max) * 100, 0, 100).toFixed(1) + '%';
+    if (this.dom.hudStaminaFill) {
+      this.dom.hudStaminaFill.style.width = pct;
+      this.dom.hudStaminaFill.classList.toggle('exhausted', exhausted);
+      this.dom.hudStaminaFill.classList.toggle('penalized', !exhausted && penalty);
+    }
+    if (this.dom.hudStaminaTrack) {
+      this.dom.hudStaminaTrack.classList.toggle('exhausted', exhausted);
+    }
+    if (this.dom.hudStaminaText) {
+      this.dom.hudStaminaText.textContent = exhausted ? 'AGOTADO' : `${cur}/${max}`;
+      this.dom.hudStaminaText.style.color = exhausted ? '#ef4444' : (penalty ? '#f59e0b' : '');
+    }
+    if (this.dom.mobileStaminaFill) {
+      this.dom.mobileStaminaFill.style.width = pct;
+      this.dom.mobileStaminaFill.classList.toggle('exhausted', exhausted);
+    }
+    if (this.dom.mobileStaminaTrack) {
+      this.dom.mobileStaminaTrack.classList.toggle('exhausted', exhausted);
+    }
+    if (this.dom.statDodge) {
+      const dashesLeft = Math.floor(cur / Math.max(1, dashCost));
+      this.dom.statDodge.textContent = `${cur}/${max} (${dashesLeft} dash · coste ${dashCost})`;
+      this.dom.statDodge.style.color = exhausted ? '#ef4444' : '#fbbf24';
+    }
+  }
+
   updateKeys(keys) {
     if (this.dom.keyCount) {
       this.dom.keyCount.textContent = String(keys);
@@ -11510,10 +11792,7 @@ class UIManager {
     if (this.dom.statMoveSpeed) {
       this.dom.statMoveSpeed.textContent = `${Math.round(player.speed)}`;
     }
-    if (this.dom.statDodge) {
-      this.dom.statDodge.textContent = `${player.dodgeCharges} / ${player.maxDodgeCharges}`;
-      this.dom.statDodge.style.color = player.dodgeCharges > 0 ? '#38bdf8' : '#ef4444';
-    }
+    this.updateStamina(player);
     if (this.dom.statDefense) {
       const defPct = Math.round((1 - player.getDefenseMitigationMultiplier()) * 100);
       this.dom.statDefense.textContent =
@@ -11556,18 +11835,20 @@ class UIManager {
         this.dom.hudSawsText.textContent = `SIERRAS: CD (${saw.cooldownTimer.toFixed(1)}s) [x${count}]`;
       }
     }
-    if (this.dom.hudDodgePips) {
-      this.dom.hudDodgePips.innerHTML = '';
-      const totalPips = player.maxDodgeCharges || 2;
-      const readyPips = player.dodgeCharges || 0;
-      for (let i = 0; i < totalPips; i++) {
-        const pip = document.createElement('div');
-        const isReady = i < readyPips;
-        pip.className = 'dodge-pip' + (isReady ? ' ready' : ' recharging');
-        pip.title = isReady ? `Carga ${i + 1} lista` : `Carga ${i + 1} recargando...`;
-        this.dom.hudDodgePips.appendChild(pip);
-      }
-    }
+    this.updateStamina(player);
+  }
+
+  updateBossStamina(boss) {
+    if (!boss || !this.dom.bossStaminaFill) return;
+    const cur = Math.max(0, Math.round(boss.stamina ?? 0));
+    const max = Math.max(1, Math.round(boss.maxStamina ?? 160));
+    const exh = Boolean(boss.isExhausted);
+    const key = `${cur}|${max}|${exh ? 1 : 0}`;
+    if (this._lastBossStamKey === key) return;
+    this._lastBossStamKey = key;
+    const pct = MathUtils.clamp((cur / max) * 100, 0, 100).toFixed(1) + '%';
+    this.dom.bossStaminaFill.style.width = pct;
+    this.dom.bossStaminaFill.classList.toggle('exhausted', exh);
   }
 
   updateElements(elementalPool) {
@@ -11912,6 +12193,10 @@ class UIManager {
       if (this.dom.bossHpFill) {
         this.dom.bossHpFill.style.width = '0%';
       }
+      if (this.dom.bossStaminaFill) {
+        this.dom.bossStaminaFill.style.width = '0%';
+        this.dom.bossStaminaFill.classList.remove('exhausted');
+      }
       if (this.dom.bossFsmState) {
         this.dom.bossFsmState.textContent = defeated
           ? 'Portal de Nivel Abierto'
@@ -11939,6 +12224,7 @@ class UIManager {
       const ratio = MathUtils.clamp(boss.hp / boss.maxHp, 0, 1);
       this.dom.bossHpFill.style.width = `${(ratio * 100).toFixed(1)}%`;
     }
+    this.updateBossStamina(boss);
 
     const fsmNames = {
       // Goliat
@@ -12304,6 +12590,9 @@ class Game {
     if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
       BrotherEye.onRoomEntered(this.currentRoom, this.player);
     }
+    if (typeof HiveMindSystem !== 'undefined') {
+      HiveMindSystem.onRoomEntered(this.currentRoom, this.player);
+    }
     this.syncWeaponButtonsUI();
     this.player.itemManager.onRoomStart(this.currentRoom);
 
@@ -12425,6 +12714,9 @@ class Game {
     this.currentRoom = this.currentFloor.getRoom(0, 0);
     if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
       BrotherEye.onRoomEntered(this.currentRoom, this.player);
+    }
+    if (typeof HiveMindSystem !== 'undefined') {
+      HiveMindSystem.onRoomEntered(this.currentRoom, this.player);
     }
     this.player.x = ROOM_BOUNDS.centerX;
     this.player.y = ROOM_BOUNDS.centerY + 75;
@@ -12568,6 +12860,9 @@ class Game {
     if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
       BrotherEye.onRoomEntered(this.currentRoom, this.player);
     }
+    if (typeof HiveMindSystem !== 'undefined') {
+      HiveMindSystem.onRoomEntered(this.currentRoom, this.player);
+    }
 
     // Evento de cambio de habitación: actualiza Telemetría y Minimapa en el DOM
     this.ui.updateRoomInfo(this.currentRoom, this.currentFloor);
@@ -12647,6 +12942,9 @@ class Game {
       if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
         BrotherEye.onRoomEntered(this.currentRoom, this.player);
       }
+      if (typeof HiveMindSystem !== 'undefined') {
+        HiveMindSystem.onRoomEntered(this.currentRoom, this.player);
+      }
 
       const activeBoss = this.currentRoom.enemies.find(
         (e) => e instanceof Boss && !e.markedForDeletion
@@ -12696,6 +12994,9 @@ class Game {
       this.player.itemManager.onRoomStart(this.currentRoom);
       if (typeof BrotherEye !== 'undefined' && BrotherEye.enabled) {
         BrotherEye.onRoomEntered(this.currentRoom, this.player);
+      }
+      if (typeof HiveMindSystem !== 'undefined') {
+        HiveMindSystem.onRoomEntered(this.currentRoom, this.player);
       }
 
       this.ui.updateProgression(this.currentSection, this.currentLevel);

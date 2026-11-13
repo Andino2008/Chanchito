@@ -236,6 +236,26 @@
       z-index: 4;
     }
 
+    .boss-stamina-track {
+      width: 100%;
+      height: 5px;
+      background: #090f1d;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .boss-stamina-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #059669 0%, #34d399 65%, #fde047 100%);
+      transition: width 0.08s linear;
+    }
+
+    .boss-stamina-fill.exhausted {
+      background: linear-gradient(90deg, #b91c1c, #f97316);
+    }
+
     .boss-souls-footer {
       display: flex;
       justify-content: space-between;
@@ -612,35 +632,75 @@
       text-transform: uppercase;
     }
 
-    .hud-dodge-pips {
+    .hud-stamina-wrap {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
     }
 
-    .dodge-pip {
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      border: 1.5px solid var(--border-bright);
-      transition: all 0.2s ease;
+    .hud-stamina-track {
+      width: 108px;
+      height: 9px;
+      background: rgba(9, 15, 29, 0.9);
+      border: 1px solid rgba(52, 211, 153, 0.45);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.75);
     }
 
-    .dodge-pip.ready {
-      background: var(--accent-cyan);
-      border-color: #7dd3fc;
-      box-shadow: 0 0 8px rgba(56, 189, 248, 0.75);
+    .hud-stamina-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #10b981 0%, #34d399 65%, #6ee7b7 100%);
+      transition: width 0.06s linear;
     }
 
-    .dodge-pip.recharging {
-      background: rgba(148, 163, 184, 0.12);
-      border-color: rgba(148, 163, 184, 0.3);
-      animation: pulseRecharge 1s infinite alternate;
+    .hud-stamina-track.low .hud-stamina-fill {
+      background: linear-gradient(90deg, #d97706, #fbbf24);
     }
 
-    @keyframes pulseRecharge {
-      0% { opacity: 0.35; transform: scale(0.92); }
-      100% { opacity: 0.9; transform: scale(1.05); }
+    .hud-stamina-track.exhausted {
+      border-color: rgba(239, 68, 68, 0.85);
+      animation: staminaExhaustPulse 0.45s infinite alternate;
+    }
+
+    .hud-stamina-track.exhausted .hud-stamina-fill {
+      background: linear-gradient(90deg, #991b1b, #ef4444);
+    }
+
+    .hud-stamina-text {
+      font-size: 0.66rem;
+      font-weight: 800;
+      color: #6ee7b7;
+      min-width: 48px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mobile-stamina-track {
+      width: 90px;
+      height: 4px;
+      background: rgba(9, 15, 29, 0.85);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 1px;
+    }
+
+    .mobile-stamina-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #10b981, #34d399);
+      transition: width 0.06s linear;
+    }
+
+    .mobile-stamina-track.exhausted .mobile-stamina-fill {
+      background: linear-gradient(90deg, #b91c1c, #ef4444);
+    }
+
+    @keyframes staminaExhaustPulse {
+      0% { box-shadow: 0 0 2px rgba(239, 68, 68, 0.4); }
+      100% { box-shadow: 0 0 9px rgba(239, 68, 68, 0.9); }
     }
 
     .hud-weapon-card {
@@ -3866,6 +3926,9 @@
         <div class="boss-hp-fill" id="boss-hp-fill"></div>
         <span class="boss-hp-text" id="boss-hp-text">-- / --</span>
       </div>
+      <div class="boss-stamina-track" title="Estamina del Jefe">
+        <div class="boss-stamina-fill" id="boss-stamina-fill"></div>
+      </div>
       <div class="boss-souls-footer">
         <span class="boss-fsm-state" id="boss-fsm-state">Inactivo</span>
         <span class="boss-armor-state" id="boss-armor-state">Escudo Frontal (-80%)</span>
@@ -3886,6 +3949,9 @@
         </div>
         <div class="hp-bar-track">
           <div class="hp-bar-fill" id="ui-hp-fill"></div>
+        </div>
+        <div class="mobile-stamina-track" id="mobile-stamina-track" title="Estamina para Dash">
+          <div class="mobile-stamina-fill" id="mobile-stamina-fill"></div>
         </div>
         <div class="resources-row">
           <div class="coin-row" title="Monedas acumuladas en esta partida">
@@ -3930,12 +3996,14 @@
 
       <!-- Abajo a la Izquierda: Arma Activa, Cargas de Esquiva y Afinidad Pegada (Transparente) -->
       <div class="hud-bottom-dock" id="hud-bottom">
-        <!-- Indicador de Cargas de Esquiva (Dash) -->
+        <!-- Barra de Estamina estilo Dark Souls simplificado (Dash [SHIFT]) -->
         <div class="hud-dodge-card">
-          <span class="hud-dodge-label">ESQUIVA [SHIFT]</span>
-          <div class="hud-dodge-pips" id="hud-dodge-pips">
-            <div class="dodge-pip ready" title="Carga 1 lista"></div>
-            <div class="dodge-pip ready" title="Carga 2 lista"></div>
+          <span class="hud-dodge-label">ESTAMINA [SHIFT]</span>
+          <div class="hud-stamina-wrap">
+            <div class="hud-stamina-track" id="hud-stamina-track">
+              <div class="hud-stamina-fill" id="hud-stamina-fill"></div>
+            </div>
+            <span class="hud-stamina-text" id="hud-stamina-text">100/100</span>
           </div>
         </div>
 
@@ -4008,8 +4076,8 @@
               <span class="stat-val" id="stat-move-speed">270</span>
             </li>
             <li class="stat-item">
-              <span class="stat-label">Cargas Esquiva [SHIFT]</span>
-              <span class="stat-val" id="stat-dodge">2 / 2</span>
+              <span class="stat-label">Estamina (Dash) [SHIFT]</span>
+              <span class="stat-val" id="stat-dodge">100 / 100</span>
             </li>
             <li class="stat-item">
               <span class="stat-label">Placas de Defensa</span>
@@ -4369,6 +4437,8 @@
   <script src="events.js"></script>
   <!-- 8. Sistema de Dificultad Adaptativa Modular (BrotherEye) -->
   <script src="BrotherEye.js"></script>
+  <!-- 8.5. Mente Colmena Optimizada, Oráculo Global, Fibonacci y Estamina Táctica (v3.5) -->
+  <script src="hive_mind.js"></script>
   <!-- 9. Sistema de Plantillas de Sala (13x9) y Secciones de Piso de Autor (v3.0) -->
   <script src="level_templates.js"></script>
   <!-- 10. Consola de Diagnóstico, Telemetría y Editor de Salas en Vivo -->
