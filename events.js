@@ -637,8 +637,13 @@ var BloodPactAltar = class BloodPactAltar extends BaseEntity {
       // Cobrar el tributo de sangre (20 HP)
       player.takeDamage(20, room, { isProjectile: false });
 
-      // Otorgar buff permanente de +35% Daño
-      player.damageMultiplier = (player.damageMultiplier || 1.0) * 1.35;
+      // Otorgar buff permanente de +35% Daño sobre la base persistente de la run
+      player.shopDamageMultiplier = Number(((player.shopDamageMultiplier || 1.0) * 1.35).toFixed(2));
+      if (player.itemManager) {
+        player.itemManager.applyPassiveStats();
+      } else {
+        player.damageMultiplier = Number(((player.damageMultiplier || 1.0) * 1.35).toFixed(2));
+      }
 
       if (typeof soundManager !== 'undefined' && soundManager) {
         soundManager.playProcedural('hurt');
@@ -647,6 +652,7 @@ var BloodPactAltar = class BloodPactAltar extends BaseEntity {
         player.ui.showToast('🩸 ¡PACTO DE SANGRE CONSUMADO! Sacrificaste 20 HP por +35% Daño Permanente');
         player.ui.spawnFloatingText('+35% DAÑO PERMANENTE', '#ef4444', this.x, this.y - 30);
         player.ui.updateHealth(player);
+        player.ui.updateStats(player);
       }
 
       if (window.CombatSystem) {

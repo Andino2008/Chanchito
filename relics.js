@@ -2744,6 +2744,17 @@ class ItemManager {
       stats.attackSpeedMultiplier *= 1 + aspdBonus;
     }
 
+    // Bonos dinámicos de Arquetipo (acumulativos sobre reliquias, sin sobrescribirlas cada frame)
+    if (this.player.archetype === 'berserker' && this.player.hp > 0 && stats.maxHp > 0) {
+      const clampedHp = Math.min(this.player.hp, stats.maxHp);
+      const missingPct = Math.max(0, 1 - clampedHp / stats.maxHp);
+      stats.attackSpeedMultiplier *= 1 + missingPct * 0.60;
+    }
+    if (this.player.archetype === 'tycoon') {
+      const bonusPct = Math.floor((this.player.coins || 0) / 5) * 0.01;
+      stats.damageMultiplier *= 1 + bonusPct;
+    }
+
     this.player.maxHp = Math.max(1, Math.round(stats.maxHp));
     this.player.hp = Math.min(this.player.hp, this.player.maxHp);
     this.player.speed = stats.speed;

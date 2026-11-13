@@ -737,7 +737,10 @@ class Coin extends Entity {
     }
 
     if (MathUtils.circleCollision(this.x, this.y, this.radius, player.x, player.y, player.radius)) {
-      player.addCoins(1);
+      const total = (player._coinDropCarry || 0) + 1 + (player.coinValueBonus || 0);
+      const coinsEarned = Math.max(1, Math.floor(total));
+      player._coinDropCarry = Number((total - coinsEarned).toFixed(4));
+      player.addCoins(coinsEarned);
       this.markedForDeletion = true;
     }
   }
@@ -2524,7 +2527,7 @@ const TALENT_DEFS = {
     costs: [15, 35, 65, 110, 175],
     apply(player, level) {
       player.gemDropBonus = (player.gemDropBonus || 0) + level * 0.15;
-      player.coinMagnetMultiplier += level * 0.1;
+      player.coinValueBonus = (player.coinValueBonus || 0) + level * 0.10;
     }
   },
   sawAfinity: {
@@ -2538,7 +2541,7 @@ const TALENT_DEFS = {
       if (player.sawShield) {
         if (level >= 1) player.sawShield.activeDuration += 1.5;
         if (level >= 2) player.sawShield.baseCooldown = Math.max(3.0, player.sawShield.baseCooldown - 1.5);
-        if (level >= 3) player.extraProjectiles = (player.extraProjectiles || 0) + 1;
+        if (level >= 3) player.sawShield.bonusSaws = (player.sawShield.bonusSaws || 0) + 1;
       }
     }
   }
@@ -2554,13 +2557,16 @@ class MetaProgressionManager {
       const raw = localStorage.getItem(META_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        const normArch = (id) => (id === 'cinder' ? 'pyro' : id);
+        const rawUnlocked = Array.isArray(parsed.unlockedArchetypes) ? parsed.unlockedArchetypes : ['classic'];
+        const normalizedUnlocked = Array.from(new Set(rawUnlocked.map(normArch)));
         return {
           shards: parsed.shards || 0,
           totalRuns: parsed.totalRuns || 0,
           totalKills: parsed.totalKills || 0,
           talents: parsed.talents || {},
-          unlockedArchetypes: parsed.unlockedArchetypes || ['classic'],
-          selectedArchetype: parsed.selectedArchetype || 'classic',
+          unlockedArchetypes: normalizedUnlocked,
+          selectedArchetype: normArch(parsed.selectedArchetype || 'classic'),
           pendingBlessing: parsed.pendingBlessing || null
         };
       }
@@ -2807,6 +2813,7 @@ class OrbitalDefenseShield {
     this.orbitRadius = 56;
     this.angle = 0;
     this.angularSpeed = 4.6;
+    this.bonusSaws = 0;
     this.enemyHitCooldowns = new WeakMap();
     this.saws = [];
   }
@@ -2818,9 +2825,9 @@ class OrbitalDefenseShield {
   }
 
   getSawCount(player) {
-    // +1 sierra por cada proyectil extra!
+    // +1 sierra por cada proyectil extra y +1 por Blindaje de Sierras Nv.3
     const extra = (player && player.extraProjectiles) ? player.extraProjectiles : 0;
-    return 2 + extra;
+    return 2 + extra + (this.bonusSaws || 0);
   }
 
   update(dt, player, room) {
@@ -7395,6 +7402,8 @@ class Player extends Entity {
     this.attackSpeedMultiplier = 1.0;
 
     this.coinMagnetMultiplier = 1.0;
+    this.coinValueBonus = 0.0;
+    this._coinDropCarry = 0.0;
     this.extraCoinChance = 0.0;
     this.enemySpawnMultiplier = 1.0;
 

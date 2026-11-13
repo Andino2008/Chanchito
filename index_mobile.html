@@ -1484,6 +1484,14 @@
       box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
     }
 
+    /* Reglas .hidden explícitas para elementos con display propio */
+    .sanctuary-tab-content.hidden,
+    .btn-continue.hidden,
+    .menu-mode-btn.hidden,
+    .mobile-rotate-overlay.hidden {
+      display: none !important;
+    }
+
     /* Pestaña de Arquetipos */
     .sanctuary-archetype-grid {
       padding: 18px 22px;

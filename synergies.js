@@ -371,12 +371,11 @@ var SynergyEngine = class SynergyEngine {
           }
         }
       }
-      // Resetear cooldown y cargas de Dash inmediatamente
-      player.dodgeCharges = player.maxDodgeCharges || 2;
-      player.dodgeCooldownTimer = 0;
-      if (player.combatSystem) {
-        player.combatSystem.dashCooldownTimer = 0;
-      }
+      // Restaurar Estamina por completo e interrumpir el agotamiento inmediatamente (v3.5)
+      player.stamina = player.maxStamina || 100;
+      player.staminaRegenDelayTimer = 0;
+      player.staminaAttackPenaltyTimer = 0;
+      player.isStaminaExhausted = false;
       if (player.ui) player.ui.updateStats(player);
       // Sacudida de pantalla triunfal
       if (window.CombatSystem) {

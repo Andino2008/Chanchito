@@ -154,16 +154,20 @@ const PIG_ARCHETYPES = {
     apply(player) {
       player.archetype = 'berserker';
       player.archetypeColor = '#ef4444';
-      player.shopDamageMultiplier *= 1.15;
-      player.damageMultiplier *= 1.15;
+      player.shopDamageMultiplier = Number((player.shopDamageMultiplier * 1.15).toFixed(2));
+      player.damageMultiplier = player.shopDamageMultiplier;
       if (player.elementalPool) {
         player.elementalPool.BLEED = Math.max(player.elementalPool.BLEED || 0, 1);
       }
+      player._lastBerserkerHpRatio = -1;
     },
     onTick(player, dt) {
-      if (player.hp > 0 && player.maxHp > 0) {
-        const missingPct = Math.max(0, 1 - (player.hp / player.maxHp));
-        player.attackSpeedMultiplier = player.shopAttackSpeedMultiplier * (1 + missingPct * 0.60);
+      if (player.hp > 0 && player.maxHp > 0 && player.itemManager) {
+        const hpRatio = Math.max(0, Math.min(1, player.hp / player.maxHp));
+        if (player._lastBerserkerHpRatio === undefined || Math.abs(hpRatio - player._lastBerserkerHpRatio) >= 0.01) {
+          player._lastBerserkerHpRatio = hpRatio;
+          player.itemManager.applyPassiveStats();
+        }
       }
     }
   },
@@ -203,10 +207,13 @@ const PIG_ARCHETYPES = {
       player.archetypeColor = '#fbbf24';
       player.coins += 80;
       player.keys += 2;
+      player._lastTycoonCoins = player.coins;
     },
     onTick(player, dt) {
-      const bonusPct = Math.floor((player.coins || 0) / 5) * 0.01;
-      player.damageMultiplier = player.shopDamageMultiplier * (1 + bonusPct);
+      if (player.itemManager && player._lastTycoonCoins !== player.coins) {
+        player._lastTycoonCoins = player.coins;
+        player.itemManager.applyPassiveStats();
+      }
     }
   },
   pyro: {
@@ -216,20 +223,20 @@ const PIG_ARCHETYPES = {
     badge: 'CAÑÓN DE CRISTAL',
     cost: 450,
     color: '#f97316',
-    desc: 'Cañón de Cristal: 65 HP Máx (+40% Daño base). +35 Estamina Máx y menor coste de Dash. Deja un rastro de charcos de fuego al esquivar.',
+    desc: 'Cañón de Cristal: -35% HP Máx (+40% Daño base). +35 Estamina Máx y -20% coste de Dash. Deja charcos de fuego al esquivar.',
     apply(player) {
       player.archetype = 'pyro';
       player.archetypeColor = '#f97316';
-      player.baseMaxHp = 65;
-      player.maxHp = 65;
-      player.hp = 65;
-      player.shopDamageMultiplier *= 1.40;
-      player.damageMultiplier *= 1.40;
-      player.baseMaxStamina = 135;
-      player.maxStamina = 135;
-      player.stamina = 135;
-      player.baseDashCostMultiplier = 0.80;
-      player.dashCostMultiplier = 0.80;
+      player.baseMaxHp = Math.max(30, Math.round((player.baseMaxHp || 100) * 0.65));
+      player.maxHp = player.baseMaxHp;
+      player.hp = player.maxHp;
+      player.shopDamageMultiplier = Number((player.shopDamageMultiplier * 1.40).toFixed(2));
+      player.damageMultiplier = player.shopDamageMultiplier;
+      player.baseMaxStamina = (player.baseMaxStamina || 100) + 35;
+      player.maxStamina = player.baseMaxStamina;
+      player.stamina = player.maxStamina;
+      player.baseDashCostMultiplier = Math.max(0.45, Number(((player.baseDashCostMultiplier || 1.0) * 0.80).toFixed(3)));
+      player.dashCostMultiplier = player.baseDashCostMultiplier;
       if (player.elementalPool) {
         player.elementalPool.FIRE = Math.max(player.elementalPool.FIRE || 0, 1);
       }
@@ -241,7 +248,6 @@ const PIG_ARCHETYPES = {
     }
   }
 };
-PIG_ARCHETYPES.cinder = PIG_ARCHETYPES.pyro;
 window.PIG_ARCHETYPES = PIG_ARCHETYPES;
 
 
@@ -266,10 +272,10 @@ const ORACLE_REWARDS = [
     title: 'ARSENAL EXPERIMENTAL',
     icon: '🚀',
     color: '#fb923c',
-    desc: 'Próxima partida: Comenzarás con el Lanzagranadas de Napalm como arma secundaria.',
+    desc: 'Próxima partida: Desbloqueas Fuego Nv.3 al instante (Lanzagranadas de Napalm para Pelotas).',
     grant(player, game) {
       if (window.metaProgression) {
-        window.metaProgression.setPendingBlessing({ type: 'HEAVY_ARSENAL', label: 'Lanzagranadas Inicial' });
+        window.metaProgression.setPendingBlessing({ type: 'HEAVY_ARSENAL', label: 'Lanzagranadas de Napalm' });
       }
     }
   },
@@ -372,10 +378,13 @@ class OracleManagerClass {
     mp.data.pendingBlessing = null;
     mp.save();
 
-    if (b.type === 'HEAVY_ARSENAL' && player.weapons) {
-      // Si ya tiene arma secundaria, sumar afinidad o reliquia
-      if (player.itemManager) player.itemManager.grantRandomRelic();
-      player.ui?.showToast('🚀 ¡ARSENAL DEL ORÁCULO ACTIVADO!');
+    if (b.type === 'HEAVY_ARSENAL' && player.elementalPool) {
+      player.elementalPool.FIRE = Math.max(player.elementalPool.FIRE || 0, 3);
+      if (typeof EvolutionManager !== 'undefined' && typeof EvolutionManager.checkEvolutions === 'function') {
+        EvolutionManager.checkEvolutions(player, game && game.currentRoom ? game.currentRoom : null, player.ui);
+      }
+      player.ui?.updateStats?.(player);
+      player.ui?.showToast('🚀 ¡ARSENAL DEL ORÁCULO: LANZAGRANADAS DE NAPALM DESBLOQUEADO!');
     } else if (b.type === 'DUAL_RELIC_PACK' && player.itemManager) {
       player.itemManager.grantRandomRelic();
       player.itemManager.grantRandomRelic();
