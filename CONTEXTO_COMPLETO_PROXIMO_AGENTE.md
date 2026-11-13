@@ -1,6 +1,6 @@
-# MANUAL DE ARQUITECTURA, MECÁNICAS Y CONTEXTO MAESTRO (v3.1)
+# MANUAL DE ARQUITECTURA, MECÁNICAS Y CONTEXTO MAESTRO (v3.4)
 > **Directorio del Proyecto:** `C:\experimentoweb`  
-> **Versión Actual:** `v3.1` (Arquitectura Modular de Armas Plug & Play `weapons.js`, Plantillas de Sala 13x9 y Rework de Jefes)  
+> **Versión Actual:** `v3.4` (Tribunal Judicial BrotherEye, Expediente Global, Exportador PDF y Telemetría Forense)  
 > **Tecnologías:** Vanilla JavaScript (ES6+), HTML5 Canvas 2D, CSS3 (Glassmorphism, Flexbox, Grid), Web Audio API / Audio HTML5.  
 > **Dependencias Externas:** CERO frameworks, CERO librerías externas, CERO compiladores (Webpack, Vite o Babel). Ejecutable de forma inmediata abriendo `index.html` en cualquier navegador web moderno.
 
@@ -616,5 +616,82 @@ Ubicados en la zona lateral derecha, con volumen generoso y respuesta instantán
   * `SUPERVIVIENTE_CASTIGADO`: Con `>= 3` casi-muertes o alto castigo promedio, concede `+28` al Defensor, `-12%` daño enemigo y `+12%` drop de corazones.
   * `HIPER_MOVILIDAD` y `NEMESIS_PERSONAL`: Con `MALDICION_TRIBUNAL` o `SENTENCIA_MAXIMA`, los primeros refuerzos instanciados en `applyAdaptationToRoom()` pertenecen al arquetipo Némesis del jugador.
 * **Persistencia y Consola `[F2]`:** `RunSaveManager` serializa/restaura `BrotherEye.exportSaveState()` / `importSaveState()` (con guarda `isRestoring` en `addRelic()`), y `[F2]` muestra la tarjeta `📜 EXPEDIENTE GLOBAL DEL JUGADOR` con las directivas activas.
+
+---
+
+## 22. SISTEMA DE EXPORTACIÓN FORENSE A PDF (`dev_console.js` v3.4)
+
+### 22.1 Necesidad y Diagnóstico
+* Conforme las partidas se extendían más allá de 30–50 salas y múltiples ciclos NG+, capturar diagnósticos mediante screenshots de la consola `[F2]` generaba pérdida de información histórica y volvía imposible auditar debates de salas intermedias.
+* Se implementó un motor nativo de exportación a PDF en `dev_console.js` que no requiere bibliotecas externas (0 dependencias tipo jsPDF ni servidores).
+
+### 22.2 Arquitectura Técnica de Impresión
+* **Métodos Clave:**
+  * `InGameDevConsole.prototype.buildFullReportHtml()`: Compila un documento HTML5 completo e independiente con tipografía limpia, tablas de contraste, rejilla de datos y hoja de estilos `@media print` optimizada para hoja A4 con márgenes de 10mm.
+  * `InGameDevConsole.prototype.exportLogsAsPdf()`: Inyecta dinámicamente un iframe oculto en el DOM, escribe el documento HTML forense generado, espera a que el contenido y fuentes se rendericen (`setTimeout 250ms`) y dispara `iframe.contentWindow.print()`. Esto abre el diálogo nativo del navegador permitiendo "Guardar como PDF".
+* **Puntos de Activación en UI:**
+  * Botón `📄 EXPORTAR PDF` en la barra de encabezado superior de la consola `[F2]`.
+  * Botón `📄 EXPORTAR LOGS A PDF` dentro de la pestaña `📜 LOGS`.
+  * Tarjeta de acción rápida `📄 EXPORTAR LOGS ENTEROS A PDF` en la pestaña `🛠️ HERRAMIENTAS`.
+* **Contenido Exhaustivo del Reporte PDF:**
+  1. **Encabezado y Metadatos:** Fecha ISO, URL activa, Sección, Nivel, Semilla, Estado de partida y Tiempo total transcurrido.
+  2. **Biometría y Arsenal del Cerdito:** HP actual / máximo, Escudo, Monedas, Llaves, Gemas, Multiplicadores de ataque y velocidad, afinidad elemental y lista desglosada de todas las reliquias activas con sus niveles.
+  3. **Acta Forense del Tribunal Judicial:** Estados -1 al 4, Reloj global, Calor judicial (0..100), sentencia activa, tirada d100, puntuación Fiscal vs Defensor, margen de debate, modificadores asignados a la siguiente sala y razones alegadas por ambas partes.
+  4. **Expediente Global del Jugador:** Cambios de arma, daño acumulado en la run, casi-muertes, arquetipo némesis, tiempos promedio de sala y jefes, reliquias históricas, sacrificios y directivas activas.
+  5. **Tabla Completa de Historial de Habitaciones:** Registro histórico ampliado a 120 salas (`MAX_HISTORY_LOG = 120` en `BrotherEye.js`), detallando por cada sala su tipo, duración, vitalidad perdida, puntuación judicial y modificadores.
+  6. **Caja Negra Cronológica (Consola):** Registro de los últimos 500 eventos (`MAX_LOGS = 500` en `dev_console.js`) con timestamp, origen (`EYE`, `ROOM`, `BOSS`, `ERROR`, `CONSOLE`) y mensaje.
+
+---
+
+## 23. AUDITORÍA DE PLAYTESTS REALES (CASOS DE ESTUDIO EN PRODUCCIÓN)
+
+### 23.1 Caso "Principiante / Profesor de Tecnología" (Sección 1 Nivel 1 — 4 salas, 4 muertes, 256s)
+* **Comportamiento de JusticeEye:**
+  * Entró en acción con efectividad clínica. En 3 de las 4 salas otorgó **`CLEMENCIA_DEFENSOR`** (márgenes de -100.1, -158.4 y -315.5).
+  * Argumentos de defensa registrados: `¡Peligro Crítico 2% HP! (+116)`, `Perdió 98% de vitalidad en sala (+115)`, `Combate lento/agotador (28.7s, +42)`, `Historial 4 muerte(s) (+28)`.
+  * Efecto: Redujo cantidad de enemigos a `x0.65`, daño a `x0.72` y velocidad a `x0.89`, rescatando al jugador novato del bucle de frustración.
+
+### 23.2 Caso "Veterano / God-Tier Run" (Sección 4 Nivel 1 — 57 salas, 12 bosses, 0 muertes, 937s)
+* **Perfil:** HP 468/460, Escudo 423, 3524 Monedas, 9 Llaves, Daño x14.15, VelAtaque x6.40, Proyectiles +7, 186 Reliquias históricas con 245 sacrificios de *"La reliquia que no debería existir"* Nv.13. DPS efectivo: **x321.2**.
+* **Rendimiento:** Evaporación de salas comunes en 0.6s–1.5s y jefes en 2.2s–4.5s.
+* **Gaps de Balance Identificados:**
+  1. **Tope de HP en Enemigos Comunes (`HP_MAX_MAXIMA = 3.60` en `BrotherEye.js`):** Frente a un DPS de x321, los enemigos con vida máxima x3.6 mueren en un solo tick. Se requiere un escalado elástico ante DPS ultra-disparado.
+  2. **Bucle Infinito de Reliquias por Élites de BrotherEye:** La probabilidad de élites (`elitePromotionChance` hasta 38% en `SENTENCIA_MAXIMA`) combinada con el drop garantizado de `RelicChest` en `script.js:9227` provocaba que a mayor dificultad, el juego le regalara decenas de reliquias al jugador, acelerando el bucle de rotura exponencial.
+  3. **Falso Positivo en Directiva `SUPERVIVIENTE_CASTIGADO`:** Se activaba continuamente en esta run inmortal porque `totalDamageReceived / roomsCleared > 28` evaluaba daño bruto (2178 HP absorbidos a lo largo de 57 salas), ignorando que el jugador tenía 891 de tanque y 0 situaciones de casi-muerte (`nearDeathCount === 0`).
+  4. **Etiqueta Némesis mostraba `Hazard`:** El daño acumulado por fosos/lava superaba al de enemigos individuales, asignando "Hazard" como arquetipo némesis principal. Debe filtrarse para mostrar siempre un arquetipo hostil combatible.
+
+---
+
+## 24. DIAGNÓSTICO VISUAL DEL "JEFE INMORTAL" (DOBLE ABISMO) Y BACKLOG PENDIENTE
+
+### 24.1 Evidencia y Causa Raíz del Bug de Inmortalidad en Fase 2
+* **Evidencia Visual:** Captura in-game de la Cámara de Jefe `ABISMO, EL DEVORAMUNDOS` muestra **DOS entidades de Abismo idénticas superpuestas**, con dos barras verdes individuales sobre sus cabezas y doble set de ataques en el suelo.
+* **Confirmación por Telemetría:** Tanto en la consola vieja como en la nueva, el estado de la sala Boss reporta invariablemente `Vida Entrada / Enemigos: ... | 2 Enem.`.
+* **Causa Raíz en `script.js`:**
+  * En línea `10886`: `this.bossRoom = new BossRoom(...)` ejecuta `this.bossRoom.populateRoomContent(...)` por primera vez al instanciar la sala de salida.
+  * En línea `10947`: el paso 7 de generación de mazmorras itera `for (const room of this.rooms.values())`. Como `this.bossRoom` está guardada en `this.rooms` y carece de `assignedTemplateId`, la línea `10964` invoca nuevamente `room.populateRoomContent(...)` sobre ella.
+  * Cada llamada a `populateRoomContent()` ejecuta `this.enemies.push(boss)`, instanciando dos jefes idénticos en la misma coordenada `(centerX, top + 135)`.
+* **Mecánica de la "Inmortalidad Percibida":**
+  * La barra superior del HUD (`ABISMO, EL DEVORAMUNDOS - FASE 2 | HP 1827 / 3653`) está atada a `this.enemies.find(e => e instanceof Boss)` (el Jefe 1).
+  * Al llegar a 1827 HP (exactamente el 50% de 3653), el Jefe 1 activa su Phase Gate y se entierra bajo tierra (`isBurrowed = true`, inmune a proyectiles).
+  * El jugador sigue disparando y golpeando al Jefe 2 que permanece en la superficie. El Jefe 2 recibe daño, pero la barra del HUD sigue vinculada al Jefe 1 enterrado en 1827 HP.
+  * El jugador percibe que sus disparos no mueven la barra del jefe, creyendo que el jefe se volvió permanentemente inmortal en Fase 2.
+* **Solución Quirúrgica Preparada (a aplicar cuando el usuario dé la orden):**
+  * Añadir en `script.js` dentro del bucle de población (línea `10948` aprox):
+    ```javascript
+    if (room.type === 'BOSS' || room instanceof BossRoom) {
+      room.ensureDoorPassages();
+      continue;
+    }
+    ```
+
+### 24.2 Backlog de Mejoras de Gameplay y Balance Prioritarias
+1. **Tope Absoluto de Velocidad de Enemigos (Speed Hard Cap):** Acotar la velocidad resultante multiplicada por BrotherEye en píxeles/segundo para preservar la ventana de esquiva humana incluso bajo `SENTENCIA_MAXIMA`.
+2. **Desacoplar Drops de Cofres de Reliquia en Élites Promovidos:** Los `EliteEnemy` instanciados proceduralmente por plantillas o salas dropan `RelicChest`; los enemigos comunes promovidos dinámicamente por BrotherEye (`isPromotedByEye = true`) deben soltar oro o gemas para cortar el bucle de farmeo infinito.
+3. **Escalado Dinámico de Salud ante DPS Exponencial:** Ajustar `HP_MAX_MAXIMA` dinámicamente cuando el `potentialDpsSnapshot` supere x15 o x50.
+4. **Corrección de `SUPERVIVIENTE_CASTIGADO`:** Condicionar la directiva a `nearDeathCount >= 2` o porcentaje de salud perdido recientemente, no a la acumulación de daño bruto histórico.
+5. **Filtrar `Hazard` de la Etiqueta Némesis:** Omitir peligros ambientales del título Némesis para mostrar siempre un arquetipo de criatura.
+6. **Redondeo Numérico en HUD de Consola `[F2]`:** Aplicar `Math.round()` a la vitalidad de entrada de sala para evitar cadenas tipo `197.55999999999986`.
+7. **Rampa Suave de Calor Inicial:** Establecer una cota superior de debate en las primeras 4 salas de la run para no forzar `SENTENCIA_MAXIMA` inmediata a jugadores hábiles.
 
 ---
