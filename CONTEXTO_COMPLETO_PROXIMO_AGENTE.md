@@ -757,3 +757,8 @@ Ubicados en la zona lateral derecha, con volumen generoso y respuesta instantán
 * **Economía de Oro y Llaves en Progresión / NG+ (`script.js`, `mobile_features.js`):**
   * Nuevo escalado `Room.getEconomyScale(sectionNumber, levelNumber)` (`1 + (s-1)*0.45 + (l-1)*0.25 + ngPlus*0.40`) aplicado a `SanctuaryRoom` (base `[4, 5, 5]`), `ShopRoom` (base `6 / 9 / 6 / 7`), `VaultChest.goldCost` (sin valor `30` hardcoded en prompts) y `MerchantSafe.getBribeGold()` (base `25`).
   * En `NG+ >= 1`, las salas de combate despejadas ahora reparten cofres entre `RelicChest` libre (`~55%`) y `LockedChest` dorado (`~45%`, con mayor chance de reliquia directa y monedas extra en NG+) para devolver utilidad real a las llaves.
+
+### 25.7 Limpieza de Peso Muerto y Modo Web PC para AdManager (v3.5.4)
+* **Eliminación de Respaldos Legacy (~1.2 MB):** Se eliminaron del repositorio los 6 archivos `.backup.*` (`index.backup.html`, `index.backup_meta.html`, `relics.backup.js`, `script.backup.js`, `script.backup_metaprogression.js`, `script.backup_weapons.js`), ya que todo el historial vive en Git y ningún script activo los referenciaba.
+* **Limpieza Documental (`events.js`):** Se retiró la referencia fantasma a `MimicChest` de la cabecera y se ajustó el coste documentado de `BloodPactAltar` a `20 HP`.
+* **AdManager sin espera artificial en Escritorio (`mobile_features.js`):** Cuando no hay SDK externo conectado (`externalProvider === null`), en la edición de escritorio (`index.html`, sin `TouchControlsManager` ni ruta móvil) `AdManager.showRewardedAd()` entrega la bonificación de forma instantánea sin bloquear con el modal simulado de `2.0s`; `index_mobile.html` conserva el modal simulador para pruebas móviles.

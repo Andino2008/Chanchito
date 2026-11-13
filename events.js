@@ -7,9 +7,7 @@
  *     - Bloquea las puertas y desata 2 oleadas de élites rabiosos.
  *     - Al sobrevivir, otorga el Cofre del Gran Campeón (Oro masivo, Gemas y Reliquia).
  *  2. Altar del Pacto de Sangre (BloodPactAltar):
- *     - Sacrifica 25 HP por un +35% de Daño de Ataque permanente para toda la partida.
- *  3. Mímico de las Sombras (MimicChest):
- *     - Cofres trampa sorpresa que al morir entregan doble botín (2 Llaves + Reliquia).
+ *     - Sacrifica 20 HP por un +35% de Daño de Ataque permanente para toda la partida.
  *
  * REGLA INVIOLABLE: Cero llamadas de texto a Canvas API.
  * ============================================================================

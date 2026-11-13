@@ -54,7 +54,24 @@ class AdManagerClass {
       return;
     }
 
-    // Modal de simulación in-game de 2.0s
+    // En PC/Web sin SDK móvil real: otorgar bonificación directa sin bloquear con anuncio simulado
+    const isMobileView = (
+      typeof TouchControlsManager !== 'undefined' ||
+      (typeof window !== 'undefined' && window.location && window.location.pathname.includes('mobile'))
+    );
+    if (!isMobileView) {
+      if (typeof soundManager !== 'undefined' && soundManager) {
+        soundManager.playProcedural('pedestal', { volume: 0.9 });
+        soundManager.playProcedural('coin', { volume: 0.7 });
+      }
+      if (window.activeGameInstance && window.activeGameInstance.ui) {
+        window.activeGameInstance.ui.showToast(`🎁 ¡BONIFICACIÓN APLICADA! ${rewardDesc}`);
+      }
+      onReward();
+      return;
+    }
+
+    // Modal de simulación in-game de 2.0s (solo edición móvil / pruebas sin SDK)
     this.isWatching = true;
     const modal = document.getElementById('ad-simulator-modal');
     const titleEl = document.getElementById('ad-sim-title');
