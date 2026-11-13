@@ -38,19 +38,25 @@ window.BaseEntity = BaseEntity;
  * en I-Frames de Dash o Parry, activa Perfect Dodge; si no, recibe daño.
  */
 var BossShockwaveHazard = class BossShockwaveHazard extends BaseEntity {
-  constructor(x, y, color = '#38bdf8', expansionSpeed = 320, maxRadius = 460, damage = 18) {
+  constructor(x, y, color = '#38bdf8', expansionSpeed = 320, maxRadius = 460, damage = 18, startDelay = 0) {
     super(x, y, 16, color);
+    this.startDelay = Math.max(0, startDelay || 0);
     this.currentRadius = 18;
     this.expansionSpeed = expansionSpeed;
     this.maxRadius = maxRadius;
     this.ringThickness = 16;
     this.damage = damage;
     this.hasHitPlayer = false;
-    this.lifeTime = maxRadius / Math.max(60, expansionSpeed) + 0.25;
+    this.lifeTime = maxRadius / Math.max(60, expansionSpeed) + 0.25 + this.startDelay;
     this.pulseAngle = 0;
   }
 
   update(dt, player, room) {
+    if (this.startDelay > 0) {
+      this.startDelay -= dt;
+      this.lifeTime -= dt;
+      return;
+    }
     this.currentRadius += this.expansionSpeed * dt;
     this.pulseAngle += dt * 10;
     this.lifeTime -= dt;
@@ -98,6 +104,7 @@ var BossShockwaveHazard = class BossShockwaveHazard extends BaseEntity {
   }
 
   draw(ctx) {
+    if (this.startDelay > 0) return;
     const room = window.activeGameInstance ? window.activeGameInstance.currentRoom : null;
     const b = room ? room.bounds : null;
     ctx.save();

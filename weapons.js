@@ -418,6 +418,9 @@
             if (player.itemManager) {
               player.itemManager.onHit(attackContext, enemy, room, dealt);
             }
+            if (window.synergyEngine && typeof window.synergyEngine.onBeamHit === 'function') {
+              window.synergyEngine.onBeamHit(player, enemy, enemy.x, enemy.y, room);
+            }
           }
         }
 

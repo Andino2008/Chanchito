@@ -302,7 +302,7 @@ class CombatSystem {
             }
 
             // Sinergia Parry del Dios del Trueno
-            if ((player.synergyManager && player.synergyManager.has('THUNDER_GOD_PARRY')) || (window.synergyEngine && window.synergyEngine.has('THUNDER_GOD_PARRY'))) {
+            if (window.synergyEngine && window.synergyEngine.has('THUNDER_GOD_PARRY')) {
               for (const en of room.enemies) {
                 if (en.markedForDeletion || en.isBurrowed) continue;
                 en.takeDamage(Math.round(52 * player.damageMultiplier), 0, 0, 'LIGHTNING');

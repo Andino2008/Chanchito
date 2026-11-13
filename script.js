@@ -1420,8 +1420,9 @@ class LockedChest extends Entity {
       player.ui.spawnFloatingText('★ BOTÍN DORADO ★', '#fbbf24', this.x, this.y - 30);
     }
 
-    // Drop de 4 a 7 monedas
-    const coinCount = 4 + Math.floor(Math.random() * 4);
+    // Drop de 4 a 7 monedas (+ extra en NG+)
+    const extraNgCoins = (typeof ngPlusLevel === 'number' && ngPlusLevel > 0) ? Math.min(6, ngPlusLevel * 2) : 0;
+    const coinCount = 4 + Math.floor(Math.random() * 4) + extraNgCoins;
     for (let i = 0; i < coinCount; i++) {
       const ang = (Math.PI * 2 * i) / coinCount + Math.random() * 0.3;
       const spd = 20 + Math.random() * 30;
@@ -1432,8 +1433,9 @@ class LockedChest extends Entity {
     const hType = Math.random() < 0.5 ? 'SOUL' : 'FULL';
     room.hearts.push(new HeartItem(this.x, this.y - 28, hType));
 
-    // 40% chance de reliquia directa
-    if (Math.random() < 0.40) {
+    // 40% chance de reliquia directa (65% en NG+)
+    const relicChance = (typeof ngPlusLevel === 'number' && ngPlusLevel > 0) ? 0.65 : 0.40;
+    if (Math.random() < relicChance) {
       const relic = player.itemManager.grantRandomRelic();
       if (relic && player.ui) {
         player.ui.spawnFloatingText(`★ RELIQUIA: ${relic.name.toUpperCase()} ★`, relic.color, this.x, this.y - 48);
@@ -1491,11 +1493,11 @@ class LockedChest extends Entity {
 }
 
 class VaultChest extends Entity {
-  constructor(x, y) {
+  constructor(x, y, goldCost = 30) {
     super(x, y, 26, '#38bdf8');
     this.pulseTimer = 0;
     this.keyCost = 1;
-    this.goldCost = 30;
+    this.goldCost = Math.max(15, Math.round(goldCost || 30));
     this.opened = false;
     this.openAnimTimer = 0;
     this.interactCooldown = 0;
@@ -1519,7 +1521,7 @@ class VaultChest extends Entity {
     if (this.opened || !player || player.coins < this.goldCost) return;
     player.spendCoins(this.goldCost);
     if (player.ui) player.ui.updateCoins(player.coins);
-    this.grantVaultRewards(player, room, '30 🪙 ORO');
+    this.grantVaultRewards(player, room, `${this.goldCost} 🪙 ORO`);
   }
 
   forceOpen(player, room) {
@@ -1567,7 +1569,7 @@ class VaultChest extends Entity {
     if (this.opened) return;
     if (player.keys > 0) {
       this.openWithKey(player, room);
-    } else if (player.coins >= 30) {
+    } else if (player.coins >= this.goldCost) {
       this.openWithGold(player, room);
     } else {
       this.forceOpen(player, room);
@@ -1879,15 +1881,9 @@ class Projectile extends Entity {
       if (this.bouncesLeft > 0) {
         this.bouncesLeft -= 1;
         this.hitEnemies.clear();
-        // Sinergia Caos Cinético
-        if (player && player.synergyManager && player.synergyManager.has('KINETIC_CHAOS')) {
-          this.damage = Math.round(this.damage * 1.35);
-          this.radius = Math.min(24, this.radius * 1.25);
-          if (room) {
-            room.spawnParticle(this.x, this.y, '#38bdf8', 6);
-            room.spawnParticle(this.x, this.y, '#ffffff', 4);
-          }
-          soundManager.playProcedural('crit', { volume: 0.35 });
+        // Sinergia Caos Cinético (delegada al motor unificado en synergies.js)
+        if (window.synergyEngine && typeof window.synergyEngine.onProjectileBounce === 'function') {
+          window.synergyEngine.onProjectileBounce(this, room, player);
         }
       } else {
         this.markedForDeletion = true;
@@ -2679,122 +2675,11 @@ function hasPlayerRelic(player, relicId) {
   return false;
 }
 
-const SYNERGIES = {
-  KINETIC_CHAOS: {
-    id: 'KINETIC_CHAOS',
-    name: 'Caos Cinético',
-    icon: '💥',
-    desc: 'Tus proyectiles ganan +35% daño acumulativo y crecen en tamaño con cada rebote en pared.',
-    check(player) {
-      return hasPlayerRelic(player, 'BOUNCING_BULLETS') && hasPlayerRelic(player, 'PIERCING_BULLETS');
-    }
-  },
-  ABSOLUTE_ZERO: {
-    id: 'ABSOLUTE_ZERO',
-    name: 'Cero Absoluto',
-    icon: '❄️',
-    desc: 'El Rayo Láser deja una fisura glacial en el suelo (3.5s) que congela y ralentiza a los enemigos un 65%.',
-    check(player) {
-      const hasIce = hasPlayerRelic(player, 'FROZEN_HEART') || (player && player.elementalPool && (player.elementalPool.ICE || 0) > 0);
-      const isLaser = Boolean(
-        player &&
-        player.currentWeapon &&
-        (typeof WeaponSystem !== 'undefined'
-          ? WeaponSystem.weaponHasTag(player.currentWeapon, 'BEAM')
-          : player.currentWeapon.name === 'Rayo Láser')
-      );
-      return Boolean(hasIce && isLaser);
-    }
-  },
-  VOLCANIC_SUPERNOVA: {
-    id: 'VOLCANIC_SUPERNOVA',
-    name: 'Supernova Volcánica',
-    icon: '🌋',
-    desc: 'Los Orbes Pesados detonan al final de su recorrido liberando 6 meteoritos ardientes en anillo.',
-    check(player) {
-      const hasFire = hasPlayerRelic(player, 'UNSTABLE_POWDER') || hasPlayerRelic(player, 'ASH_KING') || (player && player.elementalPool && (player.elementalPool.FIRE || 0) > 0);
-      const isProjectile = Boolean(
-        player &&
-        player.currentWeapon &&
-        (typeof WeaponSystem !== 'undefined'
-          ? WeaponSystem.weaponHasTag(player.currentWeapon, 'PROJECTILE')
-          : player.currentWeapon.name === 'Pelotas')
-      );
-      return Boolean(hasFire && isProjectile);
-    }
-  },
-  THUNDER_GOD_PARRY: {
-    id: 'THUNDER_GOD_PARRY',
-    name: 'Parry del Dios del Trueno',
-    icon: '⚡',
-    desc: 'Ejecutar un Parry con la Espada convoca relámpagos celestes sobre TODOS los enemigos visibles en la sala.',
-    check(player) {
-      const hasLightning = hasPlayerRelic(player, 'VOLTAIC_ARC') || hasPlayerRelic(player, 'DIVINE_REVENGE') || (player && player.elementalPool && (player.elementalPool.LIGHTNING || 0) > 0);
-      const isSword = Boolean(
-        player &&
-        player.currentWeapon &&
-        (typeof WeaponSystem !== 'undefined'
-          ? (WeaponSystem.weaponHasTag(player.currentWeapon, 'MELEE') || WeaponSystem.weaponHasTag(player.currentWeapon, 'PARRY'))
-          : player.currentWeapon.name === 'Espada Larga')
-      );
-      return Boolean(hasLightning && isSword);
-    }
-  },
-  PLASMA_VORTEX: {
-    id: 'PLASMA_VORTEX',
-    name: 'Vórtice de Plasma',
-    icon: '🛡️',
-    desc: 'Las sierras defensivas brillan con plasma; al bloquear balas disparan proyectiles guiados y aceleran tu escudo.',
-    check(player) {
-      return hasPlayerRelic(player, 'SECOND_SKIN') || hasPlayerRelic(player, 'SHIELD_OF_DAMNED');
-    }
-  },
-  GRAVITATIONAL_SINGULARITY: {
-    id: 'GRAVITATIONAL_SINGULARITY',
-    name: 'Singularidad Gravitacional',
-    icon: '🌀',
-    desc: 'Tus proyectiles generan un vórtice gravitatorio que succiona a todos los enemigos a su paso.',
-    check(player) {
-      return hasPlayerRelic(player, 'SINGULARITY') || hasPlayerRelic(player, 'SINGULARITY_HEART') || hasPlayerRelic(player, 'HUNTER_EYE');
-    }
-  }
-};
-
-class SynergyManager {
-  constructor() {
-    this.activeSynergies = new Set();
-    this.unlockedHistory = new Set();
-  }
-
-  update(player, ui, room) {
-    for (const key in SYNERGIES) {
-      const syn = SYNERGIES[key];
-      const isActive = syn.check(player);
-      if (isActive && !this.activeSynergies.has(key)) {
-        this.activeSynergies.add(key);
-        if (!this.unlockedHistory.has(key)) {
-          this.unlockedHistory.add(key);
-          if (ui) {
-            ui.showToast(`✨ ¡FUSIÓN DESBLOQUEADA: ${syn.name.toUpperCase()}! ✨`);
-            ui.updateSynergies(this);
-          }
-          soundManager.playProcedural('pedestal', { volume: 0.8 });
-          if (room) {
-            room.spawnParticle(player.x, player.y, '#f0abfc', 14);
-            room.spawnParticle(player.x, player.y, '#38bdf8', 14);
-          }
-        }
-      } else if (!isActive && this.activeSynergies.has(key)) {
-        this.activeSynergies.delete(key);
-        if (ui) ui.updateSynergies(this);
-      }
-    }
-  }
-
-  has(key) {
-    return this.activeSynergies.has(key);
-  }
-}
+// ----------------------------------------------------------------------------
+// 5B. SINERGIAS UNIFICADAS -> Ver `synergies.js` (`GAMEBREAKER_SYNERGIES` + `window.synergyEngine`)
+//     Se consolidó aquí la tabla única (`window.SYNERGIES` alias de `GAMEBREAKER_SYNERGIES`)
+//     para evitar desincronización de HUD y efectos muertos.
+// ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
 // 6. SISTEMA DE ARMAMENTOS (DESACOPLADO EN `weapons.js` - `WeaponSystem`)
@@ -2836,12 +2721,14 @@ class OrbitalDefenseShield {
       this.angle += this.angularSpeed * dt;
 
       const sawCount = this.getSawCount(player);
+      const hasPlasmaVortex = Boolean(window.synergyEngine && window.synergyEngine.has('PLASMA_VORTEX'));
+      const effectiveOrbitRadius = hasPlasmaVortex ? this.orbitRadius * 1.40 : this.orbitRadius;
       this.saws = [];
 
       for (let i = 0; i < sawCount; i++) {
         const sawAngle = this.angle + (i * 2 * Math.PI) / sawCount;
-        const sawX = player.x + Math.cos(sawAngle) * this.orbitRadius;
-        const sawY = player.y + Math.sin(sawAngle) * this.orbitRadius;
+        const sawX = player.x + Math.cos(sawAngle) * effectiveOrbitRadius;
+        const sawY = player.y + Math.sin(sawAngle) * effectiveOrbitRadius;
         this.saws.push({ x: sawX, y: sawY });
 
         // 1. Destruir proyectiles enemigos que impacten las sierras
@@ -2855,7 +2742,7 @@ class OrbitalDefenseShield {
               soundManager.playProcedural('break_rock', { volume: 0.35 });
 
               // Sinergia Vórtice de Plasma
-              if (player && player.synergyManager && player.synergyManager.has('PLASMA_VORTEX')) {
+              if (hasPlasmaVortex) {
                 player.shield = Math.min(player.maxShield || 25, (player.shield || 0) + 2);
                 if (room.enemies.length > 0) {
                   const target = room.enemies[0];
@@ -4515,76 +4402,9 @@ class CrackedGroundHazard extends Entity {
   }
 }
 
-/**
- * Entidad de Anillo Expansivo (`ExpandingRingHazard`) emitida por Goliat en Fase 2
- * al aterrizar de su Salto de Anillos en el centro de la sala.
- * La hitbox es una corona circular (`|dist - currentRadius| <= thickness`).
- */
-class ExpandingRingHazard extends Entity {
-  constructor(x, y, startDelay = 0, expansionSpeed = 235, maxRadius = 460, damage = 18) {
-    super(x, y, 12, '#f43f5e');
-    this.startDelay = startDelay;
-    this.currentRadius = 18;
-    this.expansionSpeed = expansionSpeed;
-    this.maxRadius = maxRadius;
-    this.ringThickness = 14;
-    this.damage = damage;
-    this.hasHitPlayer = false;
-  }
-
-  update(dt, player, room) {
-    if (this.startDelay > 0) {
-      this.startDelay -= dt;
-      return;
-    }
-
-    this.currentRadius += this.expansionSpeed * dt;
-    if (this.currentRadius >= this.maxRadius) {
-      this.markedForDeletion = true;
-      return;
-    }
-
-    if (!this.hasHitPlayer && player) {
-      const dist = Math.hypot(player.x - this.x, player.y - this.y);
-      const radialDiff = Math.abs(dist - this.currentRadius);
-      if (radialDiff <= this.ringThickness + player.radius * 0.7) {
-        const isDashing = typeof CombatSystem !== 'undefined' && CombatSystem.isPlayerDashing(player);
-        const isParrying = (typeof WeaponSystem !== 'undefined')
-          ? WeaponSystem.isWeaponParrying(player.currentWeapon)
-          : Boolean(
-              player.currentWeapon &&
-              player.currentWeapon.mode === 0 &&
-              player.currentWeapon.swingTimer > 0
-            );
-        if (isDashing || isParrying) {
-          this.hasHitPlayer = true;
-          CombatSystem.triggerPerfectDodge(player, room, player.x, player.y, '⚡ ANILLO EVADIDO');
-        } else {
-          this.hasHitPlayer = true;
-          player.takeDamage(this.damage, room, { sourceArchetype: 'GoliatBoss' });
-        }
-      }
-    }
-  }
-
-  draw(ctx) {
-    if (this.startDelay > 0) return;
-    ctx.save();
-    const alpha = Math.max(0.2, 1 - this.currentRadius / this.maxRadius);
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(244, 63, 94, ${(alpha * 0.75).toFixed(2)})`;
-    ctx.lineWidth = this.ringThickness;
-    ctx.stroke();
-
-    // Borde interior cian/blanco de alto contraste (comunica patrón saltable con Dash)
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.currentRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(186, 230, 253, ${alpha.toFixed(2)})`;
-    ctx.lineWidth = 3.5;
-    ctx.stroke();
-    ctx.restore();
-  }
+// Ondas expansivas unificadas en `BossShockwaveHazard` (`boss_phases.js`)
+if (typeof window !== 'undefined' && typeof BossShockwaveHazard !== 'undefined' && !window.ExpandingRingHazard) {
+  window.ExpandingRingHazard = BossShockwaveHazard;
 }
 
 /**
@@ -5420,18 +5240,19 @@ class GoliatBoss extends Boss {
         if (room) {
           if (typeof BossShockwaveHazard !== 'undefined') {
             room.hazards.push(new BossShockwaveHazard(this.x, this.y, '#38bdf8', 320, 520, 16));
-          }
-          for (let i = 0; i < 3; i++) {
-            room.hazards.push(
-              new ExpandingRingHazard(
-                this.x,
-                this.y,
-                i * 0.46,
-                225,
-                470,
-                16
-              )
-            );
+            for (let i = 0; i < 3; i++) {
+              room.hazards.push(
+                new BossShockwaveHazard(
+                  this.x,
+                  this.y,
+                  '#f43f5e',
+                  225,
+                  470,
+                  16,
+                  i * 0.46
+                )
+              );
+            }
           }
           for (let i = 0; i < 16; i++) {
             const ang = (Math.PI * 2 * i) / 16;
@@ -7450,9 +7271,9 @@ class Player extends Entity {
     this.currentWeaponIndex = 0;
     this.sawShield = new OrbitalDefenseShield(this);
 
-    // Meta-progreso de la partida actual & Gestor de Sinergias
+    // Meta-progreso de la partida actual & Gestor único de Sinergias (`synergies.js`)
     this.shardsCollectedThisRun = 0;
-    this.synergyManager = new SynergyManager();
+    this.synergyManager = (typeof window !== 'undefined' && window.synergyEngine) ? window.synergyEngine : null;
 
     // Estado de animación de sprites (chanchos v2.1)
     this.animDirection = 'abajo';
@@ -8004,13 +7825,6 @@ class Player extends Entity {
 
     this.sawShield.update(dt, this, room);
     this.currentWeapon.update(dt, this, room, aimState);
-    if (this.synergyManager) {
-      try {
-        this.synergyManager.update(this, this.ui, room);
-      } catch (err) {
-        console.error('Error actualizando sinergias:', err);
-      }
-    }
     if (window.synergyEngine) {
       try {
         window.synergyEngine.update(this, this.ui, room);
@@ -8803,6 +8617,13 @@ class Room {
     };
 
     this.initLayout(this.layoutType);
+  }
+
+  static getEconomyScale(sectionNumber = 1, levelNumber = 1) {
+    const s = Math.max(1, Number(sectionNumber) || 1);
+    const l = Math.max(1, Number(levelNumber) || 1);
+    const ng = (typeof ngPlusLevel === 'number' && ngPlusLevel > 0) ? ngPlusLevel : 0;
+    return Number((1 + (s - 1) * 0.45 + (l - 1) * 0.25 + ng * 0.40).toFixed(2));
   }
 
   getDoorPosition(dirKey) {
@@ -9642,7 +9463,7 @@ class Room {
             : '¡SALA DESPEJADA! Puertas desbloqueadas'
         );
 
-        // Propuesta C: En NG+, las salas de combate despejadas tienen alta probabilidad de generar un RelicChest
+        // Propuesta C: En NG+, las salas de combate despejadas reparten RelicChest (~55%) o LockedChest dorado (~45%) para dar uso a las llaves
         if (
           ngPlusLevel >= 1 &&
           this.type !== 'START' &&
@@ -9653,12 +9474,20 @@ class Room {
           const dropChance = this.type === 'HARD' || this.type === 'HAZARD' ? 0.7 : 0.4;
           if (Math.random() < dropChance) {
             const safePos = this.getWalkablePosition(this.bounds.centerX, this.bounds.centerY, 26);
-            const rChest = new RelicChest(safePos.x, safePos.y);
-            rChest.isLocked = false;
-            this.relicChests.push(rChest);
-            if (player.ui) {
-              player.ui.showToast('★ ¡COFRE DE COMBATE! Recompensa de sala despejada');
-              player.ui.spawnFloatingText('★ COFRE DE VICTORIA ★', '#c084fc', safePos.x, safePos.y - 25);
+            if (Math.random() < 0.45) {
+              this.lockedChests.push(new LockedChest(safePos.x, safePos.y));
+              if (player.ui) {
+                player.ui.showToast('★ ¡COFRE DORADO NG+! Requiere 1 Llave [🔑]');
+                player.ui.spawnFloatingText('★ COFRE DORADO [🔑]', '#f59e0b', safePos.x, safePos.y - 25);
+              }
+            } else {
+              const rChest = new RelicChest(safePos.x, safePos.y);
+              rChest.isLocked = false;
+              this.relicChests.push(rChest);
+              if (player.ui) {
+                player.ui.showToast('★ ¡COFRE DE COMBATE! Recompensa de sala despejada');
+                player.ui.spawnFloatingText('★ COFRE DE VICTORIA ★', '#c084fc', safePos.x, safePos.y - 25);
+              }
             }
           }
         } else if (
@@ -9782,13 +9611,14 @@ class Room {
       const d = Math.hypot(player.x - this.vaultChest.x, player.y - this.vaultChest.y);
       if (d <= 65 && d < closestDist) {
         closestDist = d;
+        const vaultGoldCost = this.vaultChest.goldCost || 30;
         const hasKey = player.keys > 0;
-        const hasGold = player.coins >= 30;
+        const hasGold = player.coins >= vaultGoldCost;
         let costStr = '1 Llave 🔑';
         let costCol = '#facc15';
         let descStr = 'Desbloquear bóveda abisal';
         if (!hasKey && hasGold) {
-          costStr = '30 🪙 Oro';
+          costStr = `${vaultGoldCost} 🪙 Oro`;
           descStr = 'Sobornar cerrojo de bóveda';
         } else if (!hasKey && !hasGold) {
           costStr = 'Forzar (-25 HP ❤️)';
@@ -9806,7 +9636,7 @@ class Room {
           interact: (p, r) => {
             if (p.keys > 0) {
               this.vaultChest.openWithKey(p, r);
-            } else if (p.coins >= 30) {
+            } else if (p.coins >= vaultGoldCost) {
               this.vaultChest.openWithGold(p, r);
             } else {
               this.vaultChest.forceOpen(p, r);
@@ -10493,13 +10323,14 @@ class SanctuaryRoom extends Room {
     if (typeof BloodPactAltar !== 'undefined') {
       this.hazards.push(new BloodPactAltar(ROOM_BOUNDS.centerX, ROOM_BOUNDS.bottom - 75));
     }
+    const econScale = Room.getEconomyScale(this.sectionNumber, this.levelNumber);
     this.altars = [
       new SanctuaryAltar(
         ROOM_BOUNDS.centerX - spacing,
         cy,
         'POTION_HP',
         'Poción de Vida (+30% HP Máx)',
-        3,
+        Math.round(4 * econScale),
         '#4ade80'
       ),
       new SanctuaryAltar(
@@ -10507,7 +10338,7 @@ class SanctuaryRoom extends Room {
         cy,
         'BOOTS_SPEED',
         'Botas de Agilidad (+Vel. Base)',
-        4,
+        Math.round(5 * econScale),
         '#38bdf8'
       ),
       new SanctuaryAltar(
@@ -10515,7 +10346,7 @@ class SanctuaryRoom extends Room {
         cy,
         'ARMOR_PLATES',
         'Placas de Defensa (+Armadura)',
-        4,
+        Math.round(5 * econScale),
         '#facc15'
       ),
     ];
@@ -10543,7 +10374,8 @@ class ShopRoom extends Room {
       y: ROOM_BOUNDS.top + 95,
       radius: 26,
     };
-    this.vaultChest = new VaultChest(ROOM_BOUNDS.centerX - 130, ROOM_BOUNDS.bottom - 75);
+    const vaultGoldCost = Math.round(30 * Room.getEconomyScale(sectionNumber, levelNumber));
+    this.vaultChest = new VaultChest(ROOM_BOUNDS.centerX - 130, ROOM_BOUNDS.bottom - 75, vaultGoldCost);
     if (typeof TransmutationAnvil !== 'undefined') {
       this.transmutationAnvil = new TransmutationAnvil(ROOM_BOUNDS.centerX + 130, ROOM_BOUNDS.bottom - 75);
     }
@@ -10564,6 +10396,7 @@ class ShopRoom extends Room {
   setupShopItems() {
     const cy = ROOM_BOUNDS.centerY + 15;
     const spacing = 210;
+    const econScale = Room.getEconomyScale(this.sectionNumber, this.levelNumber);
 
     this.shopItems = [
       new ShopItem(
@@ -10572,7 +10405,7 @@ class ShopRoom extends Room {
         'DAMAGE',
         '+ Daño (+45%)',
         'Aumenta el multiplicador de daño',
-        4,
+        Math.round(6 * econScale),
         '#f87171'
       ),
       new ShopItem(
@@ -10581,7 +10414,7 @@ class ShopRoom extends Room {
         'EXTRA_PROJECTILE',
         '+ 1 Proyectil / Sierra',
         'Disparo extra en "V" o sierra adicional',
-        6,
+        Math.round(9 * econScale),
         '#38bdf8'
       ),
       new ShopItem(
@@ -10590,7 +10423,7 @@ class ShopRoom extends Room {
         'ATTACK_SPEED',
         '+ Velocidad de Ataque',
         'Reduce cooldown y tiempo de carga',
-        4,
+        Math.round(6 * econScale),
         '#a855f7'
       ),
     ];
@@ -10607,6 +10440,7 @@ class ShopRoom extends Room {
 
     const cy = ROOM_BOUNDS.centerY + 15;
     const spacing = 165;
+    const econScale = Room.getEconomyScale(this.sectionNumber, this.levelNumber);
     this.shopItems = [
       new ShopItem(
         ROOM_BOUNDS.centerX - spacing * 1.5,
@@ -10614,7 +10448,7 @@ class ShopRoom extends Room {
         'DAMAGE',
         '+ Daño (+45%)',
         'Aumenta el multiplicador de daño',
-        4,
+        Math.round(6 * econScale),
         '#f87171'
       ),
       new ShopItem(
@@ -10623,7 +10457,7 @@ class ShopRoom extends Room {
         'EXTRA_PROJECTILE',
         '+ 1 Proyectil / Sierra',
         'Disparo extra en "V" o sierra adicional',
-        6,
+        Math.round(9 * econScale),
         '#38bdf8'
       ),
       new ShopItem(
@@ -10632,7 +10466,7 @@ class ShopRoom extends Room {
         'ATTACK_SPEED',
         '+ Velocidad de Ataque',
         'Reduce cooldown y tiempo de carga',
-        4,
+        Math.round(6 * econScale),
         '#a855f7'
       ),
       new ShopItem(
@@ -10641,7 +10475,7 @@ class ShopRoom extends Room {
         'LUCKY_CRIT_HP',
         'Dado de Fortuna (+15% Crít / +20 HP)',
         'Otorga probabilidad crítica y vitalidad máxima',
-        5,
+        Math.round(7 * econScale),
         '#fde047'
       ),
     ];
@@ -11670,8 +11504,9 @@ class UIManager {
       return;
     }
 
+    const catalog = (typeof window !== 'undefined' && (window.GAMEBREAKER_SYNERGIES || window.SYNERGIES)) || {};
     for (const key of active) {
-      const syn = SYNERGIES[key];
+      const syn = catalog[key];
       if (!syn) continue;
       const sc = document.createElement('div');
       sc.className = 'synergy-card';
@@ -12589,6 +12424,10 @@ class Game {
     if (tabOverlay) tabOverlay.classList.add('hidden');
     this.currentSection = 1;
     this.currentLevel = 1;
+
+    if (window.synergyEngine && typeof window.synergyEngine.reset === 'function') {
+      window.synergyEngine.reset();
+    }
 
     this.player = new Player(ROOM_BOUNDS.centerX, ROOM_BOUNDS.centerY + 75, this.ui);
     this.ui.updateKeys(this.player.keys);

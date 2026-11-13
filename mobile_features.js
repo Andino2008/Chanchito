@@ -695,10 +695,18 @@ class MerchantSafe extends MobileBaseEntity {
     }
   }
 
+  getBribeGold(room) {
+    const scale = (typeof Room !== 'undefined' && typeof Room.getEconomyScale === 'function')
+      ? Room.getEconomyScale(room ? room.sectionNumber : 1, room ? room.levelNumber : 1)
+      : 1;
+    return Math.round(25 * scale);
+  }
+
   openWithAd(player, room) {
+    const goldAmt = this.getBribeGold(room);
     AdManager.showRewardedAd({
       title: 'CAJA FUERTE DEL MERCADER',
-      rewardDesc: 'Soborno de Tienda (+45 Oro / +1 Llave)',
+      rewardDesc: `Soborno de Tienda (+${goldAmt} Oro / +1 Llave)`,
       onReward: () => this.grantSafeContent(player, room, 'ANUNCIO PATROCINADO')
     });
   }
@@ -721,14 +729,15 @@ class MerchantSafe extends MobileBaseEntity {
     soundManager.playProcedural('coin', { volume: 0.9 });
     soundManager.playProcedural('door_unlock', { volume: 0.85 });
 
-    player.coins += 45;
+    const goldAmt = this.getBribeGold(room);
+    player.coins += goldAmt;
     player.keys += 1;
 
     if (player.ui) {
       player.ui.updateCoins(player.coins);
       player.ui.updateKeys(player.keys);
-      player.ui.showToast(`💰 ¡SOBORNO COMPLETADO VIA ${methodStr}! [+45 🪙 / +1 🔑]`);
-      player.ui.spawnFloatingText('+45 🪙 | +1 🔑', '#facc15', this.x, this.y - 25);
+      player.ui.showToast(`💰 ¡SOBORNO COMPLETADO VIA ${methodStr}! [+${goldAmt} 🪙 / +1 🔑]`);
+      player.ui.spawnFloatingText(`+${goldAmt} 🪙 | +1 🔑`, '#facc15', this.x, this.y - 25);
     }
   }
 
@@ -738,9 +747,10 @@ class MerchantSafe extends MobileBaseEntity {
 
   interact(player, room) {
     if (this.opened) return;
+    const goldAmt = this.getBribeGold(room);
     openMobileChoiceModal({
       title: '💰 CAJA FUERTE DEL MERCADER',
-      desc: '¿Necesitas fondos para comprar en la tienda? Soborna la caja del mercader para recibir +45 Monedas de Oro y +1 Llave maestra.',
+      desc: `¿Necesitas fondos para comprar en la tienda? Soborna la caja del mercader para recibir +${goldAmt} Monedas de Oro y +1 Llave maestra.`,
       adText: 'SOBORNAR CON ANUNCIO',
       gemText: 'SOBORNAR CON 10 GEMAS',
       gemCost: 10,

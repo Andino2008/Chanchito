@@ -157,6 +157,74 @@ class ShadowSoulEntity extends BaseEntity {
 }
 
 /**
+ * Fisura criogénica de Sinergia Cero Absoluto (`ABSOLUTE_ZERO`).
+ * Congela enemigos que pisan el área y ralentiza proyectiles enemigos un 70%.
+ */
+class CryoSynergyFissure extends BaseEntity {
+  constructor(x, y, radius = 38, duration = 3.2) {
+    super(x, y, radius, '#06b6d4');
+    this.duration = duration;
+    this.timer = duration;
+    this.pulseAnim = 0;
+  }
+
+  update(dt, player, room) {
+    this.timer -= dt;
+    if (this.timer <= 0) {
+      this.markedForDeletion = true;
+      return;
+    }
+    this.pulseAnim += dt * 4;
+    if (!room) return;
+
+    if (room.enemyProjectiles) {
+      for (const ep of room.enemyProjectiles) {
+        if (!ep || ep.markedForDeletion || ep._cryoSlowed) continue;
+        if (Math.hypot(ep.x - this.x, ep.y - this.y) <= this.radius + (ep.radius || 4)) {
+          ep._cryoSlowed = true;
+          ep.vx *= 0.30;
+          ep.vy *= 0.30;
+        }
+      }
+    }
+
+    if (room.enemies) {
+      for (const enemy of room.enemies) {
+        if (!enemy || enemy.markedForDeletion || enemy.isBurrowed) continue;
+        if (Math.hypot(enemy.x - this.x, enemy.y - this.y) <= this.radius + (enemy.radius || 12)) {
+          if (typeof enemy.applyElementalEffect === 'function') {
+            enemy.applyElementalEffect('ICE', room, 2);
+          }
+        }
+      }
+    }
+  }
+
+  draw(ctx) {
+    const alpha = Math.max(0.2, Math.min(1, this.timer / 0.8));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.25)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#67e8f9';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(this.x - 10, this.y);
+    ctx.lineTo(this.x + 10, this.y);
+    ctx.moveTo(this.x, this.y - 10);
+    ctx.lineTo(this.x, this.y + 10);
+    ctx.strokeStyle = '#ecfeff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/**
  * Catálogo Maestro de Sinergias Extremas
  */
 var GAMEBREAKER_SYNERGIES = {
@@ -226,7 +294,15 @@ var GAMEBREAKER_SYNERGIES = {
     icon: '👻',
     desc: 'Cada enemigo aniquilado libera un espectro oscuro aliado que vuela y detona contra los enemigos supervivientes.',
     check(player) {
-      return Boolean(player && player.itemManager && (player.itemManager.hasRelic('SHADOW_CLOAK') || player.itemManager.hasRelic('CURSED_PACT') || player.itemManager.hasRelic('VAMPIRE_FANG')));
+      return Boolean(
+        player &&
+        player.itemManager &&
+        (
+          player.itemManager.hasRelic('VAMPIRIC_HEART') ||
+          player.itemManager.hasRelic('CURSED_SKULL') ||
+          player.itemManager.hasRelic('GHOST_FAMILIAR')
+        )
+      );
     }
   }
 };
@@ -239,6 +315,17 @@ var SynergyEngine = class SynergyEngine {
     this.activeSynergies = new Set();
     this.unlockedHistory = new Set();
     this.bannerTimeout = null;
+    this.lastBeamFissureAt = 0;
+  }
+
+  reset() {
+    this.activeSynergies.clear();
+    this.unlockedHistory.clear();
+    this.lastBeamFissureAt = 0;
+    if (this.bannerTimeout) {
+      clearTimeout(this.bannerTimeout);
+      this.bannerTimeout = null;
+    }
   }
 
   has(id) {
@@ -395,7 +482,61 @@ var SynergyEngine = class SynergyEngine {
       room.projectiles.push(new ShadowSoulEntity(enemy.x, enemy.y, 28));
     }
   }
+
+  /**
+   * Hook: Ejecutado cuando un proyectil rebota en una pared (Caos Cinético)
+   */
+  onProjectileBounce(proj, room, player) {
+    if (!proj || !this.has('KINETIC_CHAOS')) return;
+    proj._kineticBounceCount = (proj._kineticBounceCount || 0) + 1;
+    proj.damage = Math.min(9999, Math.round(proj.damage * 1.45));
+    proj.radius = Math.min(24, proj.radius * 1.25);
+
+    if (room) {
+      room.spawnParticle(proj.x, proj.y, '#38bdf8', 6);
+      room.spawnParticle(proj.x, proj.y, '#ffffff', 4);
+      if (proj._kineticBounceCount % 3 === 0 && room.enemies) {
+        const shockRadius = 95;
+        const shockDmg = Math.max(10, Math.round(proj.damage * 0.75));
+        for (const en of room.enemies) {
+          if (!en || en.markedForDeletion || en.isBurrowed) continue;
+          if (Math.hypot(en.x - proj.x, en.y - proj.y) <= shockRadius + (en.radius || 14)) {
+            en.takeDamage(shockDmg, 0, 0, proj.element || 'NONE');
+          }
+        }
+        for (let i = 0; i < 12; i++) {
+          const ang = (Math.PI * 2 * i) / 12;
+          room.spawnParticle(proj.x, proj.y, Math.cos(ang) * 160, Math.sin(ang) * 160, 4.5, '#38bdf8', 0.35);
+        }
+      }
+    }
+    if (typeof soundManager !== 'undefined' && soundManager) {
+      soundManager.playProcedural('crit', { volume: 0.35 });
+    }
+  }
+
+  /**
+   * Hook: Ejecutado cuando el Rayo Láser impacta un enemigo (Cero Absoluto)
+   */
+  onBeamHit(player, enemy, hitX, hitY, room) {
+    if (!enemy || !room || !this.has('ABSOLUTE_ZERO')) return;
+    enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 2.2);
+    if (typeof enemy.applyElementalEffect === 'function') {
+      enemy.applyElementalEffect('ICE', room, 3);
+    }
+
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (room.hazards && now - this.lastBeamFissureAt >= 280) {
+      const existingFissures = room.hazards.filter((h) => h instanceof CryoSynergyFissure && !h.markedForDeletion).length;
+      if (existingFissures < 6) {
+        this.lastBeamFissureAt = now;
+        room.hazards.push(new CryoSynergyFissure(hitX, hitY, 38, 3.2));
+      }
+    }
+  }
 }
 
+window.CryoSynergyFissure = CryoSynergyFissure;
 window.synergyEngine = new SynergyEngine();
 window.GAMEBREAKER_SYNERGIES = GAMEBREAKER_SYNERGIES;
+window.SYNERGIES = GAMEBREAKER_SYNERGIES;
