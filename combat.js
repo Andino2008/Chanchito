@@ -15,10 +15,10 @@
 const COMBAT_CONFIG = {
   // --- Cancelación de Animaciones, Dash con Estamina (Souls) y Evasión Perfecta (v3.5) ---
   PLAYER_MAX_STAMINA: 100,          // Estamina base del jugador
-  DASH_STAMINA_COST: 30,            // Coste base por cada Dash (sin límite fijo de cargas)
-  STAMINA_REGEN_RATE: 42,           // Regeneración por segundo al estar en reposo
-  STAMINA_REGEN_DELAY: 0.36,        // Pausa breve tras hacer Dash
-  STAMINA_EXHAUSTED_DELAY: 0.72,    // Pausa extra si se vacía la barra a 0 (Agotamiento)
+  DASH_STAMINA_COST: 36,            // 3 dashes seguidos vacían la barra -> tensión real
+  STAMINA_REGEN_RATE: 34,           // Recuperación equilibrada (~2.9s para barra completa)
+  STAMINA_REGEN_DELAY: 0.38,        // Pausa breve tras hacer Dash
+  STAMINA_EXHAUSTED_DELAY: 0.85,    // Castigo de recuperación si se vacía a 0 (Agotamiento)
   STAMINA_EMPTY_ATTACK_PENALTY_MULT: 0.55, // Si dispara/ataca con estamina en 0, recarga más lento
   STAMINA_EMPTY_ATTACK_PENALTY_DURATION: 0.35,
   DASH_DURATION: 0.20,              // Duración activa del dash en segundos
@@ -27,7 +27,7 @@ const COMBAT_CONFIG = {
   DASH_SPEED_MULT: 2.50,            // Multiplicador de velocidad de traslación
   DASH_KNOCKBACK_FORCE: 340,        // Empuje físico a enemigos al atravesarlos
   DASH_CANCEL_ATTACK: true,         // Cancela instantáneamente swings de espada y carga láser
-  PERFECT_DODGE_STAMINA_REFUND: 28, // Reembolso instantáneo de estamina al esquivar en I-Frames
+  PERFECT_DODGE_STAMINA_REFUND: 32, // Reembolso generoso de estamina al esquivar justo en I-Frames
   PERFECT_DODGE_SPEED_BONUS: 0.25,  // +25% velocidad de movimiento temporal tras Evasión Perfecta
   PERFECT_DODGE_ASPD_BONUS: 0.20,   // +20% velocidad de ataque temporal tras Evasión Perfecta
   PERFECT_DODGE_BUFF_DURATION: 1.6, // Duración del impulso de Adrenalina

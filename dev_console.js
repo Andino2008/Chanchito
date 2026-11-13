@@ -1059,7 +1059,7 @@
           '      <span>Sector Vago (3x3): <strong style="color:#fbbf24;">' + escapeHtml(o.sectorLabel || 'CENTER') + ' (' + (o.playerMoveTrend || 'STATIC') + ' / ' + (o.playerDistZone || 'MID') + ')</strong></span>',
           '      <span>Vivos: <strong>' + (o.livingEnemies || 0) + '/' + (o.initialEnemies || 0) + ' (' + Math.round((o.aliveRatio || 1) * 100) + '%)</strong></span>',
           '      <span>Ahorro CPU Fibonacci: <strong style="color:#4ade80;">' + (st.cpuSavedPct || 0) + '%</strong> (' + (st.skippedTicks || 0) + '/' + (st.totalTicks || 0) + ' saltados)</span>',
-          '      <span>Tabla 4 Salas: <strong>' + (t4.roomsTracked || 0) + '/4</strong> | Sincronías Extremas: <strong style="color:#f87171;">' + (t4.extremeSyncTriggers || 0) + '</strong></span>',
+          '      <span>Tabla 4 Salas: <strong>' + (t4.roomsTracked || 0) + '/4</strong> (Alerta x' + (t4.alertMultiplier || 1).toFixed(2) + ', Blitz:' + (t4.blitzRoomsCount || 0) + ') | Sincronías Extremas: <strong style="color:#f87171;">' + (t4.extremeSyncTriggers || 0) + '</strong></span>',
           '    </div>',
           '    <div class="eye-kv" style="margin-top:3px;flex-wrap:wrap;gap:6px;">',
           '      <span>Sub-Colmenas: ' + subHtml + '</span>',
@@ -1433,7 +1433,7 @@
     var hiveSummaryHtml = hm
       ? ('<h2>2B. MENTE COLMENA & FIBONACCI (v3.5)</h2><div class="box">' +
          '<div class="kv"><strong>Sector Vago:</strong> ' + escapeHtml(hm.oracle.sectorLabel || 'CENTER') + ' (' + escapeHtml(hm.oracle.playerMoveTrend || 'STATIC') + ') | <strong>Vivos:</strong> ' + escapeHtml(hm.oracle.livingEnemies) + '/' + escapeHtml(hm.oracle.initialEnemies) + ' | <strong>Ahorro CPU Fibonacci:</strong> ' + escapeHtml(hm.stats.cpuSavedPct || 0) + '%</div>' +
-         '<div class="kv"><strong>Tabla 4 Salas:</strong> ' + escapeHtml(hm.table4Rooms.roomsTracked) + '/4 (Reset: ' + escapeHtml(hm.table4Rooms.lastResetReason) + ') | <strong>Sincronías Extremas:</strong> ' + escapeHtml(hm.table4Rooms.extremeSyncTriggers) + '</div>' +
+         '<div class="kv"><strong>Tabla 4 Salas:</strong> ' + escapeHtml(hm.table4Rooms.roomsTracked) + '/4 (Alerta x' + escapeHtml((hm.table4Rooms.alertMultiplier || 1).toFixed(2)) + ', Blitz: ' + escapeHtml(hm.table4Rooms.blitzRoomsCount || 0) + ', Reset: ' + escapeHtml(hm.table4Rooms.lastResetReason) + ') | <strong>Sincronías Extremas:</strong> ' + escapeHtml(hm.table4Rooms.extremeSyncTriggers) + '</div>' +
          '<div class="kv"><strong>Tip Red Inter-Colmena (' + escapeHtml(hm.interHiveNetwork.milestonePct) + '%):</strong> ' + escapeHtml(hm.interHiveNetwork.lastTip || '-') + '</div>' +
          '</div>')
       : '';

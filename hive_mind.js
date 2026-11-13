@@ -53,7 +53,9 @@
       hiveDamageDealtTotal: 0,
       playerExhaustionsCount: 0,
       extremeSyncTriggers: 0,
-      roomsClearedWithNoDamageDealt: 0
+      roomsClearedWithNoDamageDealt: 0,
+      blitzRoomsCount: 0,
+      alertMultiplier: 1.0
     };
   }
 
@@ -109,7 +111,8 @@
       syncCooldownTimer: 0,
       redFlashTimer: 0,
       redFlashDuration: 0.30,
-      lastExtremeKey: ''
+      lastExtremeKey: '',
+      predictableDashAxis: null
     };
   }
 
@@ -212,6 +215,18 @@
         this.resetTable4Rooms('CYCLE_4_ROOMS');
       }
     }
+
+    // Memoria agresiva de 4 salas: si el jugador viene invicto o haciendo blitz, la colmena entra en alerta alta
+    var t4 = this.table4Rooms;
+    var streakAlert = 1.0 + Math.min(0.28, (t4.roomsClearedWithNoDamageDealt || 0) * 0.08 + (t4.blitzRoomsCount || 0) * 0.06);
+    t4.alertMultiplier = Number(streakAlert.toFixed(2));
+    if (living > 0 && t4.roomsClearedWithNoDamageDealt >= 2) {
+      this.interHiveNetwork.vanguardSlots = Math.max(this.interHiveNetwork.vanguardSlots, 3);
+      this.interHiveNetwork.aggressionMult = Number(streakAlert.toFixed(2));
+      this.interHiveNetwork.rangedCooldownMult = Number(Math.max(0.84, 1.0 - (streakAlert - 1.0) * 0.5).toFixed(2));
+      this.interHiveNetwork.lastTip = 'ALERTA 4-SALAS (' + t4.roomsClearedWithNoDamageDealt + ' invictas): Cierre envolvente inmediato.';
+      this.triggerSyncException('RUSH_SIN_DANO', 'Jugador invicto (' + t4.roomsClearedWithNoDamageDealt + ' salas)');
+    }
   };
 
   HiveMindEngine.prototype.onRoomCleared = function (room) {
@@ -220,6 +235,10 @@
     if (this.oracle.hiveDealtDmgToPlayer === false && this.oracle.initialEnemies > 0) {
       this.table4Rooms.roomsClearedWithNoDamageDealt += 1;
     }
+    if (this.oracle.initialEnemies > 0 && this.oracle.roomTime <= 2.4) {
+      this.table4Rooms.blitzRoomsCount = (this.table4Rooms.blitzRoomsCount || 0) + 1;
+    }
+    this.table4Rooms.alertMultiplier = Number((1.0 + Math.min(0.28, this.table4Rooms.roomsClearedWithNoDamageDealt * 0.08 + (this.table4Rooms.blitzRoomsCount || 0) * 0.06)).toFixed(2));
     if (this.table4Rooms.roomsTracked >= this.table4Rooms.resetInterval) {
       this.resetTable4Rooms('AUTO_4_ROOMS');
     }
@@ -400,13 +419,13 @@
     this._lastPlayerExhausted = isPlayerExhausted;
 
     q.playerStaminaEmpty = isPlayerExhausted;                                         // 1
-    q.playerStaminaLow = stamRatio < 0.32;                                            // 2
-    q.playerStationary = o.playerStationaryTimer >= 0.75;                             // 3
+    q.playerStaminaLow = stamRatio < 0.36;                                            // 2
+    q.playerStationary = o.playerStationaryTimer >= 0.55;                             // 3
     q.playerCornered = (o.sectorX !== 1 && o.sectorY !== 1);                          // 4
     q.playerDealtDmgToHive = o.timeSincePlayerDealtDmg <= 1.5;                        // 5
     q.hiveDealtDmgToPlayer = o.timeSinceHiveDealtDmg <= 2.5;                          // 6
-    q.noKillsYetStale = (o.roomTime >= 5.5 && o.killsInRoom === 0 && !hasBoss);       // 7
-    q.lowHiveDamageOutput = (o.roomTime >= 6.5 && o.timeSinceHiveDealtDmg >= 6.5);    // 8
+    q.noKillsYetStale = (o.roomTime >= 3.6 && o.killsInRoom === 0 && !hasBoss);       // 7
+    q.lowHiveDamageOutput = (o.roomTime >= 4.2 && o.timeSinceHiveDealtDmg >= 4.2);    // 8
 
     var curWeapon = player.currentWeapon;
     var isMeleeWpn = Boolean(curWeapon && Array.isArray(curWeapon.tags) && (curWeapon.tags.indexOf('MELEE') !== -1 || curWeapon.tags.indexOf('PARRY') !== -1));
@@ -419,7 +438,16 @@
     var eyeMem = (typeof BrotherEye !== 'undefined' && BrotherEye.shortTermMemory) ? BrotherEye.shortTermMemory : null;
     var eyeRegime = eyeStatus && eyeStatus.state4_Adaptive ? eyeStatus.state4_Adaptive.regime : 'JUICIO_EQUILIBRADO';
 
-    q.playerRepeatingPattern4Rooms = Boolean(eyeMem && eyeMem.detectedPatterns && eyeMem.detectedPatterns.length > 0); // 13
+    var eyePatterns = (eyeMem && Array.isArray(eyeMem.detectedPatterns)) ? eyeMem.detectedPatterns : [];
+    o.predictableDashAxis = null;
+    for (var pIdx = 0; pIdx < eyePatterns.length; pIdx++) {
+      if (eyePatterns[pIdx].indexOf('ESQUIVA_PREDECIBLE_') === 0) {
+        o.predictableDashAxis = eyePatterns[pIdx].replace('ESQUIVA_PREDECIBLE_', '');
+        break;
+      }
+    }
+
+    q.playerRepeatingPattern4Rooms = eyePatterns.length > 0;                          // 13
     q.justiceClemencyActive = (eyeRegime === 'CLEMENCIA_DEFENSOR' || eyeRegime === 'BENDICION_DIVINA');                // 14
     q.brotherEyeAggressive = (eyeRegime === 'ACUSACION_FISCAL' || eyeRegime === 'SENTENCIA_MAXIMA' || eyeRegime === 'MALDICION_TRIBUNAL'); // 15
 
@@ -437,23 +465,28 @@
     }
 
     // 4. Directivas dinámicas por sub-colmena
-    sh.MELEE.directive = q.playerUsingRangedOrBeam ? 'CERCO_FLANCO' : 'TURNOS_ROTATIVOS';
-    sh.RANGED.directive = q.playerUsingMelee ? 'MANTENER_DISTANCIA' : 'FUEGO_CRUZADO';
-    sh.CHARGER.directive = q.playerStationary ? 'EMBESTIDA_CASTIGO' : 'COLA_ESCALONADA';
+    sh.MELEE.directive = q.playerCornered ? 'TENAZA_ESQUINA' : (q.playerUsingRangedOrBeam ? 'CERCO_FLANCO' : 'TURNOS_ROTATIVOS');
+    sh.RANGED.directive = (q.hiveBelow50Pct || o.predictableDashAxis) ? 'FUEGO_PREDICTIVO' : (q.playerUsingMelee ? 'MANTENER_DISTANCIA' : 'FUEGO_CRUZADO');
+    sh.CHARGER.directive = (q.playerStationary || q.playerCornered || q.playerStaminaEmpty) ? 'EMBESTIDA_CASTIGO' : 'COLA_ESCALONADA';
     sh.ELITE.directive = q.playerStaminaEmpty ? 'EJECUCION_SIN_ESTAMINA' : 'PRESION_SARGENTO';
-    sh.BOSS.directive = q.playerStaminaLow ? 'PRESION_VENTANA_CORTA' : 'PATRON_JEFE';
+    sh.BOSS.directive = (q.playerStaminaLow || q.playerCornered) ? 'PRESION_VENTANA_CORTA' : 'PATRON_JEFE';
 
-    // 5. Excepción de Sincronía (Casos Extremos -> despierta Fibonacci + destello rojo)
+    // 5. Excepción de Sincronía (Casos Extremos -> incluye Blitz Rápido y Esquiva Predecible)
+    var isBlitzMasacre = (o.initialEnemies >= 3 && o.roomTime <= 2.0 && o.aliveRatio <= 0.55 && !hasBoss);
     if (q.isLastSurvivor && o.lastExtremeKey !== 'LAST_SURVIVOR') {
       this.triggerSyncException('LAST_SURVIVOR', 'Último sobreviviente aislado');
+    } else if (isBlitzMasacre && o.lastExtremeKey !== 'BLITZ_MASACRE') {
+      this.triggerSyncException('BLITZ_MASACRE', 'Masacre relámpago (<2s)');
     } else if (q.playerStaminaEmpty && o.syncCooldownTimer <= 0) {
       this.triggerSyncException('STAMINA_EMPTY', 'Jugador sin estamina (Agotado)');
+    } else if (o.predictableDashAxis && o.roomTime >= 0.4 && o.syncCooldownTimer <= 0) {
+      this.triggerSyncException('PREDICTABLE_DODGE', 'Esquiva repetida (' + o.predictableDashAxis + ')');
     } else if (q.playerStationary && o.syncCooldownTimer <= 0) {
       this.triggerSyncException('PLAYER_STATIC', 'Jugador estático prolongado');
     } else if (q.noKillsYetStale && o.syncCooldownTimer <= 0) {
-      this.triggerSyncException('NO_KILLS', 'Jugador aún no mató a nadie (5.5s+)');
+      this.triggerSyncException('NO_KILLS', 'Sin bajas en sala (3.6s+)');
     } else if (q.lowHiveDamageOutput && o.syncCooldownTimer <= 0) {
-      this.triggerSyncException('LOW_DMG', 'Colmena sin daño suficiente (6.5s+)');
+      this.triggerSyncException('LOW_DMG', 'Colmena sin daño suficiente (4.2s+)');
     }
   };
 
@@ -549,10 +582,10 @@
       return enemy.cachedSteering;
     }
 
-    var aggro = net.aggressionMult * (q.justiceClemencyActive ? 0.88 : (q.brotherEyeAggressive ? 1.08 : 1.0));
-    if (o.syncExceptionActive) aggro *= 1.12;
+    var aggro = net.aggressionMult * (this.table4Rooms.alertMultiplier || 1.0) * (q.justiceClemencyActive ? 0.88 : (q.brotherEyeAggressive ? 1.10 : 1.0));
+    if (o.syncExceptionActive) aggro *= 1.16;
 
-    // Asignación de roles por sub-colmena ("andá vos primero, yo flanqueo")
+    // Asignación de roles por sub-colmena ("andá vos primero, yo flanqueo / cerramos esquina")
     if (enemy.hiveType === 'MELEE' || enemy.hiveType === 'ELITE') {
       if (q.vanguardSlotOpen || enemy.hiveRole === 'VANGUARD' || o.syncExceptionActive) {
         enemy.hiveRole = 'VANGUARD';
@@ -560,8 +593,16 @@
         enemy.hiveRole = enemy.flankSign > 0 ? 'FLANK_RIGHT' : 'FLANK_LEFT';
       }
 
+      // Mini-acelerón táctico de cierre (consume estamina) si el jugador está arrinconado o sin estamina
+      if ((q.playerCornered || q.playerStaminaEmpty || o.syncExceptionActive) && dist > 65 && dist < 240 && enemy.stamina >= 30 && (!enemy.hiveLungeCooldown || enemy.hiveLungeCooldown <= 0)) {
+        if (typeof enemy.consumeStamina === 'function') enemy.consumeStamina(18, 0.9);
+        enemy.hiveLungeTimer = 0.28;
+        enemy.hiveLungeCooldown = 2.6;
+      }
+
       if (enemy.hiveRole === 'VANGUARD') {
-        var wave = Math.sin((enemy.aiTimer || 0) * (enemy.waveFrequency || 6)) * ((enemy.waveAmplitude || 120) * 0.55);
+        var weaveScale = q.playerUsingRangedOrBeam ? 0.88 : 0.55;
+        var wave = Math.sin((enemy.aiTimer || 0) * (enemy.waveFrequency || 6)) * ((enemy.waveAmplitude || 120) * weaveScale);
         enemy.cachedSteering = {
           moveVx: toX * enemy.speed * aggro + perpX * wave,
           moveVy: toY * enemy.speed * aggro + perpY * wave,
@@ -570,15 +611,15 @@
           role: enemy.hiveRole
         };
       } else {
-        // Flanqueo hacia sector adyacente al jugador (no caminan en fila india)
-        var flankAngle = enemy.flankSign * (dist > 170 ? 0.68 : 0.35);
+        // Flanqueo hacia la dirección de esquiva predicha o cierre en tenaza si está arrinconado
+        var flankAngle = enemy.flankSign * (q.playerCornered ? 0.85 : (dist > 170 ? 0.68 : 0.35));
         var fx = toX * Math.cos(flankAngle) - toY * Math.sin(flankAngle);
         var fy = toX * Math.sin(flankAngle) + toY * Math.cos(flankAngle);
         enemy.cachedSteering = {
-          moveVx: fx * enemy.speed * 0.96 * aggro,
-          moveVy: fy * enemy.speed * 0.96 * aggro,
+          moveVx: fx * enemy.speed * 1.02 * aggro,
+          moveVy: fy * enemy.speed * 1.02 * aggro,
           allowAttack: true,
-          speedMult: 0.96 * aggro,
+          speedMult: 1.02 * aggro,
           role: enemy.hiveRole
         };
       }
@@ -616,6 +657,53 @@
     }
 
     return enemy.cachedSteering;
+  };
+
+  /**
+   * Calcula un vector de disparo predictivo (lead shot) usando la tendencia del Oráculo
+   * o la velocidad instantánea del jugador sin añadir carga pesada por enemigo.
+   */
+  HiveMindEngine.prototype.getPredictiveAim = function (shooter, player, projSpeed) {
+    var dx = player.x - shooter.x;
+    var dy = player.y - shooter.y;
+    var dist = Math.hypot(dx, dy) || 1;
+    var baseX = dx / dist;
+    var baseY = dy / dist;
+
+    var o = this.oracle;
+    var useLead = o.syncExceptionActive || o.q.hiveBelow50Pct || shooter.isLastSurvivor || Boolean(o.predictableDashAxis);
+    if (!useLead || dist < 70) {
+      return { x: baseX, y: baseY };
+    }
+
+    var vx = typeof player.vx === 'number' ? player.vx : 0;
+    var vy = typeof player.vy === 'number' ? player.vy : 0;
+    if (vx === 0 && vy === 0 && o.predictableDashAxis) {
+      if (o.predictableDashAxis === 'RIGHT') vx = 180;
+      else if (o.predictableDashAxis === 'LEFT') vx = -180;
+      else if (o.predictableDashAxis === 'DOWN') vy = 180;
+      else if (o.predictableDashAxis === 'UP') vy = -180;
+    }
+
+    var travelT = clamp(dist / Math.max(120, projSpeed || 300), 0.05, 0.75);
+    var leadWeight = o.syncExceptionActive ? 0.65 : 0.42;
+    var predX = (player.x + vx * travelT * leadWeight) - shooter.x;
+    var predY = (player.y + vy * travelT * leadWeight) - shooter.y;
+    var pLen = Math.hypot(predX, predY) || 1;
+    return { x: predX / pLen, y: predY / pLen };
+  };
+
+  /**
+   * Factor de aceleración de enfriamiento para Jefes cuando la Colmena detecta presión alta.
+   */
+  HiveMindEngine.prototype.getBossPressureMult = function (boss) {
+    if (!boss || boss.isExhausted) return 1.0;
+    var o = this.oracle;
+    var q = o.q;
+    if (o.syncExceptionActive || q.playerStaminaEmpty || q.playerCornered || q.playerStaminaLow) {
+      return 1.24;
+    }
+    return this.table4Rooms.alertMultiplier > 1.08 ? 1.10 : 1.0;
   };
 
   /**

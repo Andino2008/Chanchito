@@ -1868,6 +1868,15 @@
       if (directives.countMultFloor > nextMod.enemyCountMultiplier) {
         nextMod.enemyCountMultiplier = Number(directives.countMultFloor.toFixed(2));
       }
+
+      // Escalado Elástico Post-x3.6 (v3.5): evita evaporación en <1s con builds de DPS extremo (sin afectar novatos)
+      var snapshotDps = s3.potentialDpsSnapshot || 1.0;
+      if (snapshotDps > 16.0 && (regime === 'ACUSACION_FISCAL' || regime === 'SENTENCIA_MAXIMA' || regime === 'MALDICION_TRIBUNAL')) {
+        var dpsFactor = regime === 'ACUSACION_FISCAL' ? 0.95 : 1.45;
+        var elasticBonus = 1.0 + Math.log10(snapshotDps / 12.0) * dpsFactor;
+        var maxElasticCap = regime === 'MALDICION_TRIBUNAL' ? 24.0 : (regime === 'SENTENCIA_MAXIMA' ? 20.0 : 10.0);
+        nextMod.enemyHpMultiplier = Number(clamp(nextMod.enemyHpMultiplier * elasticBonus, 1.40, maxElasticCap).toFixed(2));
+      }
     }
     if (directives.damageFactor < 1.0) {
       nextMod.enemyDamageMultiplier = Number(clamp(nextMod.enemyDamageMultiplier * directives.damageFactor, lim.DMG_MIN, lim.DMG_MAX_CURSE).toFixed(2));

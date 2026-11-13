@@ -3441,6 +3441,8 @@ class Enemy extends Entity {
     if (this.ccImmunityTimer > 0) this.ccImmunityTimer = Math.max(0, this.ccImmunityTimer - dt);
     this.aiTimer += dt;
     this.updateStamina(dt);
+    if (this.hiveLungeTimer > 0) this.hiveLungeTimer = Math.max(0, this.hiveLungeTimer - dt);
+    if (this.hiveLungeCooldown > 0) this.hiveLungeCooldown = Math.max(0, this.hiveLungeCooldown - dt);
 
     // Retardo de reacción inicial al entrar el jugador a la sala (0.25s para evaluar la situación)
     if (this.reactionDelay > 0) {
@@ -3565,6 +3567,12 @@ class Enemy extends Entity {
       moveVx *= envSpeedMult * bossSlowMult;
       moveVy *= envSpeedMult * bossSlowMult;
 
+      // Mini-acelerón táctico de flanqueo (Colmena): cierra esquinas sin romper el techo máximo
+      if (this.hiveLungeTimer > 0 && !this.isExhausted) {
+        moveVx *= 1.42;
+        moveVy *= 1.42;
+      }
+
       // Tope absoluto de velocidad en caminata (impide que Berserk / BrotherEye superen al jugador)
       const isTelegraphedDash = (
         this.dashState === 'DASH' ||
@@ -3581,10 +3589,10 @@ class Enemy extends Entity {
           walkCap = this.phase >= 2 ? capTable.BOSS_WALK_P2 : capTable.BOSS_WALK_P1;
           if (this.isBurrowed) walkCap = capTable.ABISMO_BURROW;
         } else if (this.isElite) {
-          walkCap = this.isBerserk ? capTable.BERSERK_MAX : capTable.ELITE;
+          walkCap = (this.isBerserk || this.hiveLungeTimer > 0) ? capTable.BERSERK_MAX : capTable.ELITE;
         } else if (this.isFlying) {
           walkCap = this.isBerserk ? capTable.BERSERK_MAX : capTable.FLYER;
-        } else if (this.isBerserk) {
+        } else if (this.isBerserk || this.hiveLungeTimer > 0) {
           walkCap = capTable.BERSERK_MAX;
         }
         const moveMag = Math.hypot(moveVx, moveVy);
@@ -3963,13 +3971,34 @@ class ShooterEnemy extends Enemy {
 
     this.shootTimer -= dt;
     if (this.shootTimer <= 0 && room && (!this.isExhausted || this.isLastSurvivor)) {
-      this.consumeStamina(22, 1.1);
-      this.shootTimer = this.shootInterval * rangedMult;
-      const spawnX = this.x + norm.x * (this.radius + 8);
-      const spawnY = this.y + norm.y * (this.radius + 8);
-      room.enemyProjectiles.push(
-        new EnemyProjectile(spawnX, spawnY, norm.x, norm.y, 315, 14, 6)
-      );
+      const o = useHive ? HiveMindSystem.oracle : null;
+      const isAggressiveVolley = Boolean((o && (o.syncExceptionActive || o.q.hiveBelow50Pct)) || this.isLastSurvivor);
+      const projSpeed = isAggressiveVolley ? 345 : 315;
+      const aimVec = (useHive && typeof HiveMindSystem.getPredictiveAim === 'function')
+        ? HiveMindSystem.getPredictiveAim(this, targetEntity, projSpeed)
+        : norm;
+      const spawnX = this.x + aimVec.x * (this.radius + 8);
+      const spawnY = this.y + aimVec.y * (this.radius + 8);
+
+      if (isAggressiveVolley && this.stamina >= 32) {
+        this.consumeStamina(32, 1.25);
+        this.shootTimer = this.shootInterval * rangedMult * 0.92;
+        const baseAng = Math.atan2(aimVec.y, aimVec.x);
+        const spread = 0.14;
+        for (const offset of [-spread, spread]) {
+          const ax = Math.cos(baseAng + offset);
+          const ay = Math.sin(baseAng + offset);
+          room.enemyProjectiles.push(
+            new EnemyProjectile(spawnX, spawnY, ax, ay, projSpeed, 14, 6)
+          );
+        }
+      } else {
+        this.consumeStamina(22, 1.1);
+        this.shootTimer = this.shootInterval * rangedMult;
+        room.enemyProjectiles.push(
+          new EnemyProjectile(spawnX, spawnY, aimVec.x, aimVec.y, projSpeed, 14, 6)
+        );
+      }
     }
 
     return { moveVx, moveVy };
@@ -4184,17 +4213,20 @@ class FlyerEnemy extends Enemy {
 
     this.shootTimer -= dt;
     if (this.shootTimer <= 0 && (!this.isExhausted || this.isLastSurvivor)) {
+      const useHive = typeof HiveMindSystem !== 'undefined';
+      const fastShot = Boolean((useHive && HiveMindSystem.oracle && HiveMindSystem.oracle.syncExceptionActive) || this.isLastSurvivor);
+      const projSpeed = fastShot ? 340 : 290;
       this.consumeStamina(20, 1.0);
       this.shootTimer = (2.5 + Math.random() * 0.8) * rangedMult;
-      const dx = player.x - this.x;
-      const dy = player.y - this.y;
-      const norm = MathUtils.normalize(dx, dy);
+      const aimVec = (useHive && typeof HiveMindSystem.getPredictiveAim === 'function')
+        ? HiveMindSystem.getPredictiveAim(this, player, projSpeed)
+        : MathUtils.normalize(player.x - this.x, player.y - this.y);
       if (room && room.enemyProjectiles) {
         room.enemyProjectiles.push(
-          new EnemyProjectile(this.x, this.y, norm.x, norm.y, 290, Math.round(14 * this.ngMult), 6, 'FlyerEnemy')
+          new EnemyProjectile(this.x, this.y, aimVec.x, aimVec.y, projSpeed, Math.round(14 * this.ngMult), 6, 'FlyerEnemy')
         );
         if (typeof room.spawnParticle === 'function') {
-          room.spawnParticle(this.x, this.y, norm.x * 40, norm.y * 40, 3, '#c084fc', 0.3);
+          room.spawnParticle(this.x, this.y, aimVec.x * 40, aimVec.y * 40, 3, '#c084fc', 0.3);
         }
       }
     }
@@ -4255,6 +4287,8 @@ class ChargerEnemy extends Enemy {
     if (this.markedForDeletion) return;
     this.aiTimer += dt;
     this.updateStamina(dt);
+    if (this.hiveLungeTimer > 0) this.hiveLungeTimer = Math.max(0, this.hiveLungeTimer - dt);
+    if (this.hiveLungeCooldown > 0) this.hiveLungeCooldown = Math.max(0, this.hiveLungeCooldown - dt);
     if (this.reactionDelay > 0) {
       this.reactionDelay -= dt;
       return;
@@ -4265,16 +4299,23 @@ class ChargerEnemy extends Enemy {
       const dy = player.y - this.y;
       const dist = Math.hypot(dx, dy);
 
-      if ((!this.isExhausted || this.isLastSurvivor) && dist < 420 && (Math.abs(dx) < 28 || Math.abs(dy) < 28)) {
+      const useHive = typeof HiveMindSystem !== 'undefined';
+      const punishCharge = Boolean(
+        this.isLastSurvivor ||
+        (useHive && HiveMindSystem.subHives && HiveMindSystem.subHives.CHARGER && HiveMindSystem.subHives.CHARGER.directive === 'EMBESTIDA_CASTIGO') ||
+        (useHive && HiveMindSystem.oracle && HiveMindSystem.oracle.syncExceptionActive)
+      );
+      const alignTol = punishCharge ? 40 : 28;
+
+      if ((!this.isExhausted || this.isLastSurvivor) && dist < 440 && (Math.abs(dx) < alignTol || Math.abs(dy) < alignTol)) {
         this.state = 'WINDUP';
-        this.stateTimer = 0.42;
+        this.stateTimer = punishCharge ? 0.25 : 0.42;
         this.chargeDir = MathUtils.normalize(dx, dy);
         this.vx = 0;
         this.vy = 0;
         return;
       }
 
-      const useHive = typeof HiveMindSystem !== 'undefined';
       if (useHive) {
         const runCheck = HiveMindSystem.shouldRunLocalCheck(this);
         if (runCheck || !this.cachedSteering) {
@@ -4776,6 +4817,15 @@ class Boss extends Enemy {
     if (this.dpsMeter <= threshold * 0.85) {
       this.lastDpsArmorRatio = 1.0;
     }
+
+    // Presión de Colmena sobre Jefes: acorta pausas/enfriamientos cuando el jugador está sin estamina o arrinconado
+    if (typeof HiveMindSystem !== 'undefined' && typeof HiveMindSystem.getBossPressureMult === 'function' && !this.isStaggered && this.stateTimer > 0) {
+      const pressMult = HiveMindSystem.getBossPressureMult(this);
+      if (pressMult > 1.0) {
+        this.stateTimer = Math.max(0.01, this.stateTimer - dt * (pressMult - 1.0));
+      }
+    }
+
     super.update(dt, player, allEnemies, room);
   }
 
